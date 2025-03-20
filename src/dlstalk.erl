@@ -3,6 +3,7 @@
 
 -include("dlstalk.hrl").
 
+-define(PROBE_DELAY, '$dlstalk_probe_delay').
 
 %% API
 -export([start/3, start_link/3]).
@@ -30,9 +31,14 @@
                req_id :: gen_statem:request_id(),
                waitees :: list(pid())
               }).
+-record(deadstate,{worker :: pid(),
+                   deadlock :: list(pid())
+                  }).
 
-state_get_worker(State) ->
-    State#state.worker.
+state_get_worker(#state{worker = Worker}) ->
+    Worker;
+state_get_worker(#deadstate{worker = Worker}) ->
+    Worker.
 
 state_get_req_tag(State) ->
     State#state.req_tag.
@@ -42,11 +48,6 @@ state_get_req_id(State) ->
 
 state_get_waitees(State) ->
     State#state.waitees.
-
-
--record(deadstate,{worker :: pid(),
-                   deadlock :: list(pid())
-                  }).
 
 deadstate_get_worker(State) ->
     State#deadstate.worker.
@@ -94,6 +95,8 @@ init({Module, Args, Options}) ->
                        req_tag = undefined,
                        req_id = undefined
                       },
+            %% put(?PROBE_DELAY, proplists:get_value(probe_delay, Options)),
+            put(?PROBE_DELAY, 5000),
             {ok, unlocked, State};
         E -> E
     end.
@@ -109,11 +112,11 @@ unlocked({call, From}, '$get_child', #state{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
 
-%% Our service wants a call to itworker (either directly or the monitor)
-unlocked({call, {Worker, _PTag}}, {_Msg, Server}, State = #state{worker = Worker})
+%% Our service wants a call to itself (either directly or the monitor)
+unlocked({call, {Worker, _PTag}}, {_Msg, Server}, _State = #state{worker = Worker})
   when Server =:= Worker orelse Server =:= self() ->
     {next_state, deadlocked,
-     State
+     #deadstate{worker = Worker, deadlock = [self()]}
     };
 
 %% Our service wants a call
@@ -147,6 +150,10 @@ unlocked(cast, {probe, _Probe}, _) ->
 %% Unknown cast
 unlocked(cast, Msg, #state{worker = Worker}) ->
     gen_server:cast(Worker, Msg),
+    keep_state_and_data;
+
+%% Scheduled probe
+unlocked(cast, {?SCHEDULED_PROBE, _To, _Probe}, _State) ->
     keep_state_and_data;
 
 %% Process sent a reply (or not)
@@ -185,8 +192,19 @@ locked({call, From}, Msg, State = #state{req_tag = PTag, waitees = Waitees0}) ->
     %% Register the request
     Waitees1 = gen_statem:reqids_add(ReqId, From, Waitees0),
 
-    %% Send a probe
-    gen_statem:cast(element(1, From), {?PROBE, PTag, [self()]}),
+    case get(?PROBE_DELAY) of
+        undefined ->
+            %% Send a probe
+            gen_statem:cast(element(1, From), {?PROBE, PTag, [self()]});
+        N when is_integer(N) ->
+            %% Schedule a delayed probe
+            Self = self(),
+            spawn(fun() -> timer:sleep(N), gen_statem:cast(Self, { ?SCHEDULED_PROBE
+                                                                 , element(1, From)
+                                                                 , {?PROBE, PTag, [Self]}
+                                                                 })
+                  end)
+    end,
 
     {keep_state,
      State#state{waitees = Waitees1}
@@ -222,6 +240,16 @@ locked(cast, {?PROBE, Probe, Chain}, #state{waitees = Waitees}) ->
     ],
     keep_state_and_data;
 
+%% Scheduled probe
+locked(cast, {?SCHEDULED_PROBE, To, Probe = {?PROBE, PTagProbe, _}}, #state{req_tag = PTag}) ->
+    case PTagProbe =:= PTag of
+        true ->
+            gen_statem:cast(To, Probe);
+        false ->
+            ok
+    end,
+    keep_state_and_data;
+
 %% Unknown cast
 locked(cast, Msg, #state{worker = Worker}) ->
     gen_server:cast(Worker, Msg),
@@ -240,6 +268,10 @@ deadlocked({call, _From}, _, _State) ->
 
 %% Probe
 deadlocked(cast, {?PROBE, _, _}, _State) ->
+    keep_state_and_data;
+
+%% Scheduled probe
+deadlocked(cast, {?SCHEDULED_PROBE, _To, _Probe}, _State) ->
     keep_state_and_data;
 
 %% Unknown cast

@@ -149,6 +149,11 @@ handle({trace_ts, _Who, 'call',
         {dlstalk, _, [cast, {_From, _Msg}, _]}, _Time}) ->
     ignore;
 
+%% Pick scheduled probe
+handle({trace_ts, _Who, 'call',
+        {dlstalk, _, [cast, {?SCHEDULED_PROBE, _, _}, _]}, _Time}) ->
+    ignore;
+
 %% Receive query (gen_statem --- no alias)
 handle({trace_ts, Who, 'receive',
         {'$gen_call', {FromPid, ReqId}, Msg},
@@ -192,6 +197,13 @@ handle({trace_ts, Who, 'receive',
        }) ->
     {Time, Who, {recv, {release, Pid}}};
 
+%% Scheduled probe
+handle({trace_ts, _Who, 'receive',
+        {'$gen_cast', {?SCHEDULED_PROBE, _ToProbe, _Probe}},
+        _Time
+       }) ->
+    ignore;
+
 %% Send query (gen_statem --- no alias)
 handle({trace_ts, Who, 'send',
         {'$gen_call', _From, Msg}, To,
@@ -226,6 +238,13 @@ handle({trace_ts, Who, send,
         Time
        }) ->
     {Time, Who, {send, To, {release, Pid}}};
+
+%% Scheduled probe
+handle({trace_ts, _Who, send,
+        {'$gen_cast', {?SCHEDULED_PROBE, _ToProbe, _Probe}}, _To,
+        _Time
+       }) ->
+    ignore;
 
 %% Process waiting
 handle({trace_ts, Who, 'call',

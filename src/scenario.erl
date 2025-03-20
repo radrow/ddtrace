@@ -88,6 +88,9 @@ scenario_time(Scenario) ->
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
     Init = self(),
+    {LogKnown, LogFresh} = logging:mk_ets(),
+    logging:conf(Opts),
+
     logging:remember(Init, 'I', 0),
 
     Routers = proplists:get_all_values(router, Opts),
@@ -143,7 +146,7 @@ run_scenario(Scenario, Opts) ->
               end,
     logging:log_scenario(FScenario, Timeout),
 
-    Tracer = tracer:start_link(FullProcList, Opts),
+    Tracer = tracer:start_link(FullProcList, [{logging_ets_known, LogKnown}, {logging_ets_fresh, LogFresh} | Opts]),
     InitTime = erlang:monotonic_time(),
 
     Folder = fun({_SessionId, []}, ReqIds) -> ReqIds;
@@ -157,7 +160,18 @@ run_scenario(Scenario, Opts) ->
 
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
 
-    [logging:log_trace(InitTime, lists:sort(Log)) || not proplists:get_value(live_log, Opts, false)],
+    [begin
+         logging:log_trace(InitTime, lists:sort(Log)),
+         logging:print_log_stats(Log)
+     end
+     || not proplists:get_value(live_log, Opts, false)],
+
+    case proplists:get_value(csv, Opts, false) of
+        false -> ok;
+        CsvPath ->
+            Csv = logging:trace_csv(InitTime, lists:sort(Log)),
+            file:write_file(CsvPath, Csv)
+    end,
 
     case Result of
         ok ->
@@ -166,7 +180,7 @@ run_scenario(Scenario, Opts) ->
             logging:log_timeout()
     end,
 
-    ok.
+    {Log, Result}.
 
 
 %% Wait for all sessions to terminate, or timeout
@@ -180,7 +194,6 @@ receive_responses(Reqs0, Time) ->
             receive_responses(Reqs1, Time)
     end.
 
-
 %% Parse scenario together with in-file options
 parse_scenario(Test) ->
     Sessions = proplists:get_value(sessions, Test),
@@ -189,19 +202,79 @@ parse_scenario(Test) ->
     {Sessions, Opts}.
 
 
+%% Set RNG seed according to the config
+set_seed(Opts) ->
+    case proplists:get_value(seed, Opts) of
+        undefined ->
+            rand:seed(exs1024s);
+        I when is_integer(I) ->
+            rand:seed(exs1024s, I)
+    end.
+
+
 %% Reads and evaluates a scenario file
 run(Filename) ->
     run(Filename, []).
+
+run(dFilename, Opts) ->
+    Gens =
+        [ {lurker, x, lists:seq(0, 20)}
+        , {lurker, x, lists:seq(21, 30)}
+        , {lurker, x, lists:seq(31, 40)}
+        , {lurker, x, [51|lists:seq(0, 50)]}
+        ],
+    S = scenario_gen:generate(Gens),
+    S1 = scenario_gen:generate(Gens),
+    %% io:format("SCEN: ~p\n\n", [S]),
+    %% run_many([S, S1], Opts).
+    run_scenario(S, Opts);
 
 run(Filename, Opts) ->
     case file:consult(Filename) of
         {ok, File} ->
             logging:conf(Opts),
-            rand:seed(exs1024s),
-            {Sessions, FileOpts} = parse_scenario(File),
-            run_scenario(Sessions, Opts ++ FileOpts);
+            set_seed(Opts),
+            {Scenario, FileOpts} = parse_scenario(File),
+            run_scenario(Scenario, Opts ++ FileOpts);
 
         {error, Err} ->
             io:format(standard_error, "Can't read ~s: ~s\n", [Filename, file:format_error(Err)]),
             halt(2)
     end.
+
+%% gen_gen(Size) ->
+%%     [
+
+%%     ]
+
+run_many(Scenarios, Opts) ->
+    Self = self(),
+    Workers =
+        [ begin
+              R = rand:uniform(2137),
+              spawn_link(
+                fun() ->
+                        {Log, Result} = run_scenario(Scenario, [logging_silent,{seed, R}|Opts]),
+                        Stats = logging:log_stats(Log),
+                        Self ! {self(), Stats, Result}
+                end)
+          end
+                  || Scenario <- Scenarios
+          ],
+    Stats = [ receive {W, S} -> S end
+              || W <- Workers
+            ],
+
+    {ok, Log} = file:open("log.csv", [write]),
+    erlang:group_leader(Log, self()),
+    io:format(Log, "run,total,sent,queries,replies,probes,success\n", []),
+    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p\n", [I,Total,Sent,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end])
+      || {I, #{total := Total,
+               sent := Sent,
+               queries := Queries,
+               replies := Replies,
+               probes := Probes,
+               picks := _Picks
+              }, Result} <- lists:enumerate(Stats)
+    ],
+    file:close(Log).

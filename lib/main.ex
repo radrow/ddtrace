@@ -8,6 +8,8 @@ defmodule Dlstalk.Main do
     \t--trace-mon\tTrace events in monitored services (default)
     \t--live-log\tPrint logs from the tracer instead of retroactively
     \t--indent\tHow many tabs should log cells be separated with; 0 means no tabulation (default 4)
+    \t--csv\tOutput log file in CSV format
+    \t--seed\tRNG seed (default unset)
     Prefix options with "no-" to disable them, eg. "--no-trace-mon"
     """
   end
@@ -27,6 +29,8 @@ defmodule Dlstalk.Main do
                 help: :boolean,
                 timeout: :integer,
                 indent: :integer,
+                csv: :string,
+                seed: :integer,
                ]
     {opts, args, bad} = OptionParser.parse(args, strict: switches)
 
