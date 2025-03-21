@@ -270,6 +270,14 @@ ev_class(E) when element(1, E) =:= probe ->
     [probe];
 ev_class({{_Time, _TimeIdx}, _Who, E}) -> % TODO distinguish trace events...
     ev_class(E);
+ev_class({state, S}) ->
+    [state | ev_class(S)];
+ev_class({deadlocked, _}) ->
+    [deadlocked];
+ev_class({locked, _}) ->
+    [locked];
+ev_class(unlocked) ->
+    [unlocked];
 ev_class(E) when element(1, E) =:= wait;
                  element(1, E) =:= release;
                  element(1, E) =:= state
@@ -293,6 +301,9 @@ log_stats(Log) ->
       queries => Count([send, comm, query]),
       replies => Count([send, comm, reply]),
       probes => Count([send, comm, probe]),
+      locks => Count([state, locked]),
+      unlocks => Count([state, unlocked]),
+      deadlocks => Count([state, deadlocked]),
       picks => Count([pick])
      }.
 
@@ -303,11 +314,14 @@ print_log_stats(Log) ->
       queries := Queries,
       replies := Replies,
       probes := Probes,
+      unlocks := Unlocks,
+      locks := Locks,
+      deadlocks := Deadlocks,
       picks := Picks
      } = log_stats(Log),
 
-    print(io_lib:format("Registered ~p events:\n\t~p\tmessages sent\n\t\t~p\tqueries\n\t\t~p\treplies\n\t\t~p\tprobes\n\t~p\tmque picks\n",
-                        [Total, Sent, Queries, Replies, Probes, Picks])).
+    print(io_lib:format("Registered ~p events:\n\t~p\tmessages sent\n\t\t~p\tqueries\n\t\t~p\treplies\n\t\t~p\tprobes\n\t~p\tmque picks\nState changes:\n\t~p\tunlocks\n\t~p\tlocks\n\t~p\tdeadlocks\n",
+                        [Total, Sent, Queries, Replies, Probes, Picks, Unlocks, Locks, Deadlocks])).
 
 
 trace_csv_header() ->

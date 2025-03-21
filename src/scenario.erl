@@ -101,7 +101,7 @@ run_scenario(Scenario, Opts) ->
                              {I, N} -> {router, N};
                              none -> worker
                          end,
-                  {ok, M} = 'Elixir.Dlstalk.TestServer':start_link(I, Args),
+                  {ok, M} = 'Elixir.Dlstalk.TestServer':start_link(I, Args, [{dlstalk_opts, Opts}]),
                   P = gen_statem:call(M, '$get_child'),
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -196,10 +196,18 @@ receive_responses(Reqs0, Time) ->
 
 %% Parse scenario together with in-file options
 parse_scenario(Test) ->
-    Sessions = proplists:get_value(sessions, Test),
-    Opts = proplists:delete(sessions, Test),
-
-    {Sessions, Opts}.
+    case {proplists:get_value(sessions, Test), proplists:get_value(bench, Test)} of
+        {undefined, undefined} ->
+            error(what_to_do);
+        {Sessions, undefined} ->
+            Opts = proplists:delete(sessions, Test),
+            {one, Sessions, Opts};
+        {undefined, Bench} ->
+            Opts = proplists:delete(bench, Test),
+            {bench, Bench, Opts};
+        _ ->
+            error(decide_bench_or_sessions)
+    end.
 
 
 %% Set RNG seed according to the config
@@ -216,36 +224,36 @@ set_seed(Opts) ->
 run(Filename) ->
     run(Filename, []).
 
-run(dFilename, Opts) ->
-    Gens =
-        [ {lurker, x, lists:seq(0, 20)}
-        , {lurker, x, lists:seq(21, 30)}
-        , {lurker, x, lists:seq(31, 40)}
-        , {lurker, x, [51|lists:seq(0, 50)]}
-        ],
-    S = scenario_gen:generate(Gens),
-    S1 = scenario_gen:generate(Gens),
-    %% io:format("SCEN: ~p\n\n", [S]),
-    %% run_many([S, S1], Opts).
-    run_scenario(S, Opts);
-
 run(Filename, Opts) ->
     case file:consult(Filename) of
         {ok, File} ->
             logging:conf(Opts),
             set_seed(Opts),
-            {Scenario, FileOpts} = parse_scenario(File),
-            run_scenario(Scenario, Opts ++ FileOpts);
+            case parse_scenario(File) of
+                {one, Scenario, FileOpts} ->
+                    run_scenario(Scenario, Opts ++ FileOpts);
+                {bench, Bench, FileOpts} ->
+                    run_bench(Bench, Opts ++ FileOpts)
+            end;
 
         {error, Err} ->
             io:format(standard_error, "Can't read ~s: ~s\n", [Filename, file:format_error(Err)]),
             halt(2)
     end.
 
-%% gen_gen(Size) ->
-%%     [
 
-%%     ]
+gen_gen(Size) ->
+    NoDead =
+        [ {tree, t0, lists:seq(0, Size)}
+        , {tree, t0, lists:seq(1 * Size + 1, 2 * Size + 1)}
+        , {tree, t0, lists:seq(2 * Size + 1, 3 * Size + 1)}
+        , {tree, t0, lists:seq(3 * Size + 1, 4 * Size + 1)}
+        ],
+    scenario_gen:generate(NoDead).
+
+run_bench(Sizes, Opts) ->
+    Scenarios = [gen_gen(Size) || Size <- Sizes],
+    run_many(Scenarios, Opts).
 
 run_many(Scenarios, Opts) ->
     Self = self(),

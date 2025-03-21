@@ -3,21 +3,21 @@ defmodule Dlstalk.TestServer do
   alias :dlstalk, as: GenServer  # Comment this line to switch off monitoring
 
 
-  def start_link(id, kind) do
-    GenServer.start_link(__MODULE__, {id, kind}, [])
+  def start_link(id, kind, opts) do
+    GenServer.start_link(__MODULE__, {id, kind, opts}, opts)
   end
 
 
-  def init({id, {:router, n}}) do
+  def init({id, {:router, n}, genserver_opts}) do
     pids = for _ <- 1..n do
-      {:ok, pid} = GenServer.start_link(__MODULE__, {id, :worker}, [])
+      {:ok, pid} = GenServer.start_link(__MODULE__, {id, :worker}, genserver_opts)
       pid
     end
 
     {:ok, {:route, pids, []}}
   end
 
-  def init({id, :worker}) do
+  def init({id, :worker, _}) do
     {:ok, {:work, id}}
   end
 

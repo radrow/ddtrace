@@ -87,7 +87,9 @@ cast(Server, Message) ->
 %%%======================
 
 init({Module, Args, Options}) ->
-    case gen_monitored:start_link(Module, Args, Options) of
+    DlsOpts = proplists:get_value(dlstalk_opts, Options, []),
+    ProcOpts = proplists:delete(dlstalk_opts, Options),
+    case gen_monitored:start_link(Module, Args, ProcOpts) of
         {ok, Pid} ->
             State =
                 #state{worker = Pid,
@@ -95,8 +97,7 @@ init({Module, Args, Options}) ->
                        req_tag = undefined,
                        req_id = undefined
                       },
-            %% put(?PROBE_DELAY, proplists:get_value(probe_delay, Options)),
-            put(?PROBE_DELAY, 5000),
+            put(?PROBE_DELAY, proplists:get_value(probe_delay, DlsOpts, -1)),
             {ok, unlocked, State};
         E -> E
     end.
@@ -193,7 +194,7 @@ locked({call, From}, Msg, State = #state{req_tag = PTag, waitees = Waitees0}) ->
     Waitees1 = gen_statem:reqids_add(ReqId, From, Waitees0),
 
     case get(?PROBE_DELAY) of
-        undefined ->
+        -1 ->
             %% Send a probe
             gen_statem:cast(element(1, From), {?PROBE, PTag, [self()]});
         N when is_integer(N) ->
