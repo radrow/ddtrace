@@ -1,5 +1,6 @@
 -module(scenario).
 
+-export([grid_printer/1]).
 -export([run/1, run/2]).
 
 -include("dlstalk.hrl").
@@ -73,7 +74,7 @@ session_time({wait, Time}) ->
 session_time({'let', _Name, Expr}) ->
     session_time(Expr);
 session_time(I) when is_integer(I) orelse is_pid(I) orelse is_atom(I) ->
-    10; % Super precise estimate on how long a call takes
+    1; % Super precise estimate on how long a call takes
 session_time([S|Rest]) ->
     session_time(S) + session_time(Rest);
 session_time(S) when is_tuple(S) ->
@@ -88,11 +89,11 @@ scenario_time(Scenario) ->
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
     Init = self(),
+
     {LogKnown, LogFresh} = logging:mk_ets(),
     logging:conf(Opts),
 
     logging:remember(Init, 'I', 0),
-
     Routers = proplists:get_all_values(router, Opts),
 
     ProcMap = maps:from_list(
@@ -141,9 +142,12 @@ run_scenario(Scenario, Opts) ->
          ),
 
     Timeout = case proplists:get_value(timeout, Opts, 0) of
-                  0 -> scenario_time(FScenario) + 2000;
+                  0 -> scenario_time(FScenario)
+                           + proplists:get_value(probe_delay, Opts, 0)
+                           + 2000;
                   N when is_integer(N) -> N
               end,
+    %% io:format("TT: ~p\n", [Timeout]),
     logging:log_scenario(FScenario, Timeout),
 
     Tracer = tracer:start_link(FullProcList, [{logging_ets_known, LogKnown}, {logging_ets_fresh, LogFresh} | Opts]),
@@ -164,12 +168,16 @@ run_scenario(Scenario, Opts) ->
          logging:log_trace(InitTime, lists:sort(Log)),
          logging:print_log_stats(Log)
      end
-     || not proplists:get_value(live_log, Opts, false)],
+     || not proplists:get_value(live_log, Opts, false),
+        not proplists:get_value(silent, Opts, false)
+    ],
 
     case proplists:get_value(csv, Opts, false) of
         false -> ok;
         CsvPath ->
+            io:format("Preparing csv\n"),
             Csv = logging:trace_csv(InitTime, lists:sort(Log)),
+            io:format("Done csv\n"),
             file:write_file(CsvPath, Csv)
     end,
 
@@ -179,6 +187,14 @@ run_scenario(Scenario, Opts) ->
         timeout ->
             logging:log_timeout()
     end,
+
+    [ begin
+          erlang:unlink(M), exit(M, normal),
+          erlang:unlink(P), exit(P, normal),
+          ok
+      end || {_, {M, P}} <- maps:to_list(ProcMap)
+    ],
+    erlang:unlink(Tracer), exit(Tracer, normal),
 
     {Log, Result}.
 
@@ -196,15 +212,18 @@ receive_responses(Reqs0, Time) ->
 
 %% Parse scenario together with in-file options
 parse_scenario(Test) ->
-    case {proplists:get_value(sessions, Test), proplists:get_value(bench, Test)} of
-        {undefined, undefined} ->
+    case {proplists:get_value(sessions, Test), proplists:get_value(bench, Test), proplists:get_value(gen, Test)} of
+        {undefined, undefined, undefined} ->
             error(what_to_do);
-        {Sessions, undefined} ->
+        {Sessions, undefined, undefined} ->
             Opts = proplists:delete(sessions, Test),
             {one, Sessions, Opts};
-        {undefined, Bench} ->
+        {undefined, Bench, undefined} ->
             Opts = proplists:delete(bench, Test),
             {bench, Bench, Opts};
+        {undefined, undefined, Gen} ->
+            Opts = proplists:delete(gen, Test),
+            {gen, Gen, Opts};
         _ ->
             error(decide_bench_or_sessions)
     end.
@@ -233,7 +252,12 @@ run(Filename, Opts) ->
                 {one, Scenario, FileOpts} ->
                     run_scenario(Scenario, Opts ++ FileOpts);
                 {bench, Bench, FileOpts} ->
-                    run_bench(Bench, Opts ++ FileOpts)
+                    [ run_bench(Bench, Opts ++ FileOpts) ||
+                        _ <- lists:seq(1, 1) ];
+                {gen, Gen, FileOpts} ->
+                    {Type, _Rep, Size} = Gen,
+                    Scen = gen_gen(Type, Size),
+                    run_scenario(Scen, Opts ++ FileOpts)
             end;
 
         {error, Err} ->
@@ -242,47 +266,188 @@ run(Filename, Opts) ->
     end.
 
 
-gen_gen(Size) ->
-    NoDead =
-        [ {tree, t0, lists:seq(0, Size)}
-        , {tree, t0, lists:seq(1 * Size + 1, 2 * Size + 1)}
-        , {tree, t0, lists:seq(2 * Size + 1, 3 * Size + 1)}
-        , {tree, t0, lists:seq(3 * Size + 1, 4 * Size + 1)}
-        ],
-    scenario_gen:generate(NoDead).
+gen_gen(nodead, Size) ->
+    TreeSize = ceil(math:sqrt(Size)),
+    Trees = Size div TreeSize,
+    scenario_gen:generate(
+      [ {tree, I, lists:seq(I * TreeSize, I * TreeSize + TreeSize - 1)}
+        || I <- lists:seq(1, Trees)
+      ]);
+gen_gen(dead, Size) ->
+    GroupSize = ceil(math:sqrt(Size)) * 2,
+    Groups = Size div GroupSize,
+    scenario_gen:generate(
+      [
+        {envelope, I,
+         { lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1)
+         , [ {safe, 0.05 + rand:uniform() / 20}
+           ]
+         }
+        }
+        || I <- lists:seq(0, Groups - 1)
+      ]
+      ++
+          [ begin
+                %% Space = lists:seq(0, Size - 1),
+                %% Space = lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1),
+                Space = element(1, lists:split(GroupSize * 2, scenario_gen:shuffle(lists:seq(1, Size)))),
+                %% io:format("PROVO: ~p ~p ~p", [I, Size + I, Space]),
+                {tree, provocator,
+                 { [Groups * GroupSize + I | Space]
+                 , [{spread, 3}]
+                 }
+                }
+            end
+            || I <- lists:seq(1, Size - GroupSize * Groups + 1)
+          ]
+     );
+gen_gen(dead, Size) ->
+    Trees = ceil(math:sqrt(Size)),
+    scenario_gen:generate(
+      [ {tree, I, lists:seq(0, Size)}
+        || I <- lists:seq(1, Trees)
+      ] ++ [{loop, deadlocker, {lists:seq(0, Size), [{delay, 2 * Size}]}}]
+     );
+gen_gen(conditional, Size) ->
+    GroupSize = ceil(math:sqrt(Size)) * 2,
+    Groups = Size div GroupSize,
+    Provos = max(1, Size - GroupSize * Groups),
+    %% MinLen = ceil(math:sqrt(GroupSize)),
+    scenario_gen:generate(
+      [
+        {envelope, I,
+         { lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1)
+         , [ {safe, 0.5 + rand:uniform() / 2}
+           ]
+         }
+        }
+        || I <- lists:seq(0, Groups - 1)
+      ]
+      ++
+          [ begin
+                Space = lists:seq(0, Size div 2),
+                %% Space = lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1),
+                %% Space = element(1, lists:split(GroupSize div 2, scenario_gen:shuffle(lists:seq(1, Size)))),
+                %% io:format("PROVO: ~p ~p ~p", [I, Size + I, Space]),
+                {tree, provocator,
+                 { [Size + I | Space]
+                 , [{spread, rand:uniform(2)}]
+                 }
+                }
+            end
+            || I <- lists:seq(1, 1)
+          ]
+     ).
+    %% scenario_gen:generate(
+    %%   [ {envelope, I,
+    %%      { lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1)
+    %%      , [{target, Target}, {min_len, MinLen}]
+    %%      }
+    %%     }
+    %%     || I <- lists:seq(1, Groups)
+    %%   ]).
 
-run_bench(Sizes, Opts) ->
-    Scenarios = [gen_gen(Size) || Size <- Sizes],
-    run_many(Scenarios, Opts).
+run_bench(Bench, Opts) ->
+    Scens = [{Type, Size, gen_gen(Type, Size)} || {Type, Reps, Size} <- Bench,
+                                                  _ <- lists:seq(1, Reps)
+            ],
+    %% io:format("\n\nGEN: ~p\n\n", [Scens]),
+    run_many(Scens, Opts).
+
+
+-define(GRID_WIDTH, 80).
+grid_printer(Ws) ->
+    State = maps:from_list([{W, busy} || W <- Ws]),
+    print_grid(State),
+    grid_printer_loop(State).
+print_grid(State) ->
+    S = "[" ++
+        print_grid(lists:sort(maps:to_list(State)), 0) ++
+        " ]\n",
+    io:format("~s", [S]).
+
+print_grid([], _) -> "";
+print_grid(Ws, ?GRID_WIDTH) ->
+    "\n " ++
+        print_grid(Ws, 0);
+print_grid([{_W, S}|Ws], I) ->
+    io_lib:format(" ~s", [case S of busy -> "_"; done -> "#"; dead -> "@" end]) ++
+        print_grid(Ws, I + 1).
+clean_grid(Ws) ->
+    Height = (maps:size(Ws) div ?GRID_WIDTH) + 1,
+    io:format("\e[~pA\r", [Height]).
+grid_printer_loop(State) ->
+    receive
+        {update, W, S} ->
+            State1 = State#{W => S},
+            clean_grid(State1),
+            print_grid(State1),
+            grid_printer_loop(State1);
+        {From, finito} ->
+            From ! {self(), ok}
+    end.
 
 run_many(Scenarios, Opts) ->
     Self = self(),
+    Ref = make_ref(),
     Workers =
         [ begin
               R = rand:uniform(2137),
-              spawn_link(
+              spawn_monitor(
                 fun() ->
-                        {Log, Result} = run_scenario(Scenario, [logging_silent,{seed, R}|Opts]),
+                        SOpts = [ {seed, R}
+                                , silent
+                                | proplists:delete(csv, Opts)],
+                        {Log, Result} = run_scenario(Scenario, SOpts),
                         Stats = logging:log_stats(Log),
-                        Self ! {self(), Stats, Result}
+                        Self ! {Ref, self(), Type, Size, Stats, Result}
                 end)
           end
-                  || Scenario <- Scenarios
+                  || {Type, Size, Scenario} <- Scenarios
           ],
-    Stats = [ receive {W, S} -> S end
+
+    Printer = spawn(fun() -> grid_printer(Workers) end),
+
+    Stats = [ receive
+                  {Ref, _, Type, Size, Stats, Res} ->
+                      Printer ! {update, W, done},
+                      {Type, Size, Stats, Res};
+                  {'DOWN', _, process, W, _} ->
+                      Printer ! {update, W, dead},
+                      down
+              end
               || W <- Workers
             ],
 
-    {ok, Log} = file:open("log.csv", [write]),
-    erlang:group_leader(Log, self()),
-    io:format(Log, "run,total,sent,queries,replies,probes,success\n", []),
-    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p\n", [I,Total,Sent,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end])
-      || {I, #{total := Total,
-               sent := Sent,
-               queries := Queries,
-               replies := Replies,
-               probes := Probes,
-               picks := _Picks
-              }, Result} <- lists:enumerate(Stats)
+    Printer ! {self(), finito},
+    receive {Printer, ok} -> ok end,
+
+    Appending = filelib:is_file(proplists:get_value(csv, Opts, "")),
+    LogFile = proplists:get_value(csv, Opts, <<"/dev/stdout">>),
+    io:format("Writing log to: ~s\n", [LogFile]),
+
+    {ok, Log} = file:open(binary:bin_to_list(LogFile), [append]),
+
+    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
+                [I,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end, Deadlocks])
+      || {I, {Type, Size,
+              #{total := Total,
+                sent := Sent,
+                inits := Inits,
+                mon_mon := MonMon,
+                proc_mon := ProcMon,
+                mon_proc := MonProc,
+                proc_proc := ProcProc,
+                queries := Queries,
+                replies := Replies,
+                probes := Probes,
+                unlocks := _Unlocks,
+                locks := _Locks,
+                deadlocks := Deadlocks,
+                picks := _Picks
+               }, Result}} <- lists:enumerate(Stats)
     ],
-    file:close(Log).
+    case LogFile of
+        <<"/dev/stdout">> -> ok;
+        _ -> file:close(Log)
+    end.

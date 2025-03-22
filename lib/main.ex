@@ -33,6 +33,7 @@ defmodule Dlstalk.Main do
                 csv: :string,
                 seed: :integer,
                 probe_delay: :integer,
+                silent: :boolean,
                ]
     {opts, args, bad} = OptionParser.parse(args, strict: switches)
 

@@ -36,7 +36,7 @@ conf(LogConf) ->
         undefined -> ok;
         FrRef -> put(?FRESH_ETS, FrRef)
     end,
-    put(?LOG_SILENT, proplists:get_value(logging_silent, LogConf)),
+    put(?LOG_SILENT, proplists:get_value(silent, LogConf)),
     put(?LOG_INDENT_SIZE, proplists:get_value(indent, LogConf, 4)),
     ok.
 
@@ -251,11 +251,18 @@ c_event({state, State}) ->
 c_event({unhandled, T}) ->
     ["unhandled trace: ", c_thing(T)].
 
+class_who(E) ->
+    case type(E) of
+        A when is_atom(A) ->
+            A;
+        {A, _I} when is_atom(A) -> A;
+        _X -> unknown
+    end.
 
 ev_class({recv, E}) ->
     [recv, comm | ev_class(E)];
-ev_class({send, _To, E}) ->
-    [send, comm | ev_class(E)];
+ev_class({send, To, E}) ->
+    [{to, class_who(To)}, send, comm | ev_class(E)];
 ev_class({pick, E}) ->
     [pick | ev_class(E)];
 ev_class(E) when element(1, E) =:= query ->
@@ -268,8 +275,8 @@ ev_class(E) when element(1, E) =:= proc_reply ->
     [reply, proc];
 ev_class(E) when element(1, E) =:= probe ->
     [probe];
-ev_class({{_Time, _TimeIdx}, _Who, E}) -> % TODO distinguish trace events...
-    ev_class(E);
+ev_class({{_Time, _TimeIdx}, Who, E}) -> % TODO distinguish trace events...
+    [{by, class_who(Who)} | ev_class(E)];
 ev_class({state, S}) ->
     [state | ev_class(S)];
 ev_class({deadlocked, _}) ->
@@ -298,6 +305,11 @@ log_stats(Log) ->
 
     #{total => length(Classes),
       sent => Count([send, comm]),
+      inits => Count([send, comm, {by, 'I'}]) + Count([send, comm, {to, 'I'}]),
+      mon_mon => Count([send, comm, {by, 'M'}, {to, 'M'}]),
+      mon_proc => Count([send, comm, {by, 'M'}, {to, 'P'}]),
+      proc_mon => Count([send, comm, {by, 'P'}, {to, 'M'}]),
+      proc_proc => Count([send, comm, {by, 'P'}, {to, 'P'}]),
       queries => Count([send, comm, query]),
       replies => Count([send, comm, reply]),
       probes => Count([send, comm, probe]),
@@ -311,6 +323,11 @@ log_stats(Log) ->
 print_log_stats(Log) ->
     #{total := Total,
       sent := Sent,
+      inits := Inits,
+      mon_mon := MonMon,
+      proc_mon := ProcMon,
+      mon_proc := MonProc,
+      proc_proc := ProcProc,
       queries := Queries,
       replies := Replies,
       probes := Probes,
@@ -320,12 +337,30 @@ print_log_stats(Log) ->
       picks := Picks
      } = log_stats(Log),
 
-    print(io_lib:format("Registered ~p events:\n\t~p\tmessages sent\n\t\t~p\tqueries\n\t\t~p\treplies\n\t\t~p\tprobes\n\t~p\tmque picks\nState changes:\n\t~p\tunlocks\n\t~p\tlocks\n\t~p\tdeadlocks\n",
-                        [Total, Sent, Queries, Replies, Probes, Picks, Unlocks, Locks, Deadlocks])).
+    print(io_lib:format("Registered ~p events:\n"
+                        "\t~p\tmessages sent\n"
+                        "\t~p\tqueries\n"
+                        "\t~p\treplies\n"
+                        "\t~p\tprobes\n"
+                        "\t~p\tmque picks\n"
+                        "Directions:\n"
+                        "\t~p\tinvolving Init\n"
+                        "\t~p\tMon -> Mon\n"
+                        "\t~p\tMon -> Proc\n"
+                        "\t~p\tProc -> Mon\n"
+                        "\t~p\tProc -> Proc\n"
+                        "State changes:\n"
+                        "\t~p\tunlocks\n"
+                        "\t~p\tlocks\n"
+                        "\t~p\tdeadlocks\n",
+                        [Total,
+                         Sent, Queries, Replies, Probes, Picks,
+                         Inits, MonMon, ProcMon, MonProc, ProcProc,
+                         Unlocks, Locks, Deadlocks])).
 
 
 trace_csv_header() ->
-    {"tmestamp","who_type","who", "event_type", "other_type", "other", "data_type", "data"}.
+    {"timestamp","who_type","who", "event_type", "other_type", "other", "data_type", "data"}.
 
 
 ev_data_csv({query, From, Msg}) ->
@@ -354,13 +389,13 @@ ev_data_csv({locked, On}) ->
 ev_csv({recv, EvData}) ->
     maps:merge(#{ev_type=>recv}, ev_data_csv(EvData));
 ev_csv({send, To, EvData}) ->
-    maps:merge(#{ev_type=>recv,other=>To}, ev_data_csv(EvData));
+    maps:merge(#{ev_type=>send,other=>To}, ev_data_csv(EvData));
 ev_csv({pick, Event}) ->
     maps:merge(#{ev_type=>pick}, ev_data_csv(Event));
 ev_csv({wait, Time}) ->
     #{ev_type=>wait, data=>Time};
 ev_csv({state, State}) ->
-    #{ev_type=>state, data=>ev_data_csv(State)};
+    maps:merge(#{ev_type=>state}, ev_data_csv(State));
 ev_csv(_) -> nil.
 
 trace_csv(InitT, Trace) ->
@@ -395,10 +430,11 @@ trace_csv(InitT, Trace) ->
                  , atom_to_list(maps:get(data_type, EvCsv, ''))
                  , case maps:get(data, EvCsv, nil) of
                        nil -> "";
-                       D ->
+                       D when is_atom(D); is_integer(D); is_list(D) ->
                            "\"" ++
                                lists:flatten(string:replace(lists:flatten(io_lib:format("~p", [D])), "\"", "\"\"", all))
-                               ++ "\""
+                               ++ "\"";
+                       _D -> "msg"
                    end
                  }
              end
@@ -406,8 +442,8 @@ trace_csv(InitT, Trace) ->
                 EvCsv <- [ev_csv(What)], is_map(EvCsv)
            ],
 
-    Lines = [ string:join(tuple_to_list(T), ",") || T <- [trace_csv_header()|Rows] ],
-    string:join(Lines, "\n").
+    Lines = [ string:join(tuple_to_list(T), ",") ++ "\n" || T <- [trace_csv_header()|Rows] ],
+    lists:flatten(Lines).
 
 
 c_timestamp(InitT, {T, _TimeIdx}) ->

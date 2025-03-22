@@ -200,10 +200,13 @@ locked({call, From}, Msg, State = #state{req_tag = PTag, waitees = Waitees0}) ->
         N when is_integer(N) ->
             %% Schedule a delayed probe
             Self = self(),
-            spawn(fun() -> timer:sleep(N), gen_statem:cast(Self, { ?SCHEDULED_PROBE
-                                                                 , element(1, From)
-                                                                 , {?PROBE, PTag, [Self]}
-                                                                 })
+            spawn_link(
+              fun() ->
+                      timer:sleep(N),
+                      gen_statem:cast(Self, { ?SCHEDULED_PROBE
+                                            , _To = element(1, From)
+                                            , _Probe = {?PROBE, PTag, [Self]}
+                                            })
                   end)
     end,
 
