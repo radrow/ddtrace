@@ -43,7 +43,7 @@ defmodule Dlstalk.TestServer do
 
   def handle_call({session_id, _request}, _from, {:route, [], [next_worker|busy]}) do
     # Wait for it to free in the Round Robin way. If we want to be smarter, we need the OR model.
-    GenServer.call(next_worker, {session_id, []})
+    GenServer.call(next_worker, {session_id, []}, :infinity)
     {:reply, {:route, next_worker}, {:route, [], busy ++ [next_worker]}}
   end
 
@@ -76,8 +76,13 @@ defmodule Dlstalk.TestServer do
 
       [pid | next] when is_pid(pid) ->
         :erlang.yield()
-        call(pid, {session_id, next})
-
+        try do # The call may throw when the party is terminated
+          call(pid, {session_id, next})
+        rescue e ->
+            e
+        catch e, m ->
+            {e, m}
+        end
       [var | next] when is_atom(var) ->
         case Map.get(vars, var, :none) do
           :none -> :erlang.error({:undef, self(), var})
@@ -112,9 +117,9 @@ defmodule Dlstalk.TestServer do
 
 
   def call(pid, data) do
-    case GenServer.call(pid, data) do
+    case GenServer.call(pid, data, :infinity) do
       {:route, pid1} ->
-        res = GenServer.call(pid1, data)
+        res = GenServer.call(pid1, data, :infinity)
         GenServer.cast(pid, {:release, pid1})
         res
       res ->

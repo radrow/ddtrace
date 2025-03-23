@@ -9,7 +9,10 @@ defmodule Dlstalk do
       start_permanent: Mix.env() == :prod,
       compilers: [:erlang] ++ Mix.compilers(),
       deps: [],
-      escript: [main_module: Dlstalk.Main]
+      escript: [
+        main_module: Dlstalk.Main,
+        emu_args: "-sname dlstalk +P 10485760"
+      ]
     ]
   end
 

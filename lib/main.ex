@@ -9,6 +9,7 @@ defmodule Dlstalk.Main do
     \t--live-log\tPrint logs from the tracer instead of retroactively
     \t--indent\tHow many tabs should log cells be separated with; 0 means no tabulation (default 4)
     \t--csv\tOutput log file in CSV format
+    \t--stats-csv\tOutput stats file in CSV format
     \t--seed\tRNG seed (default unset)
     \t--probe-delay\tWhether to send probes with a delay. 0 means no delay, but asynchronous. -1 (default) means no delay.
     Prefix options with "no-" to disable them, eg. "--no-trace-mon"
@@ -31,6 +32,7 @@ defmodule Dlstalk.Main do
                 timeout: :integer,
                 indent: :integer,
                 csv: :string,
+                stats_csv: :string,
                 seed: :integer,
                 probe_delay: :integer,
                 silent: :boolean,

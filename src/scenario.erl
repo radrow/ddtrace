@@ -1,6 +1,6 @@
 -module(scenario).
 
--export([grid_printer/1]).
+-export([grid_printer/2]).
 -export([run/1, run/2]).
 
 -include("dlstalk.hrl").
@@ -89,6 +89,7 @@ scenario_time(Scenario) ->
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
     Init = self(),
+    code:ensure_loaded('Elixir.Dlstalk.TestServer'),
 
     {LogKnown, LogFresh} = logging:mk_ets(),
     logging:conf(Opts),
@@ -96,13 +97,21 @@ run_scenario(Scenario, Opts) ->
     logging:remember(Init, 'I', 0),
     Routers = proplists:get_all_values(router, Opts),
 
+    {ok, Supervisor} = scenario_supervisor:start_link(),
+
     ProcMap = maps:from_list(
             [ begin
                   Args = case proplists:lookup(I, Routers) of
                              {I, N} -> {router, N};
                              none -> worker
                          end,
-                  {ok, M} = 'Elixir.Dlstalk.TestServer':start_link(I, Args, [{dlstalk_opts, Opts}]),
+                  ChildSpec = #{id => I,
+                                start => {'Elixir.Dlstalk.TestServer', start_link,
+                                          [I, Args, [{dlstalk_opts, Opts}]]},
+                                restart => transient,
+                                shutdown => 5000,
+                                type => worker},
+                  {ok, M} = supervisor:start_child(Supervisor, ChildSpec),
                   P = gen_statem:call(M, '$get_child'),
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -162,6 +171,7 @@ run_scenario(Scenario, Opts) ->
 
     Result = receive_responses(Reqs, Timeout),
 
+    %% Log = [{{1, 1}, self(), {wait, 0}}],
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
 
     [begin
@@ -188,13 +198,8 @@ run_scenario(Scenario, Opts) ->
             logging:log_timeout()
     end,
 
-    [ begin
-          erlang:unlink(M), exit(M, normal),
-          erlang:unlink(P), exit(P, normal),
-          ok
-      end || {_, {M, P}} <- maps:to_list(ProcMap)
-    ],
-    erlang:unlink(Tracer), exit(Tracer, normal),
+    unlink(Supervisor),
+    exit(Supervisor, shutdown),
 
     {Log, Result}.
 
@@ -244,6 +249,8 @@ run(Filename) ->
     run(Filename, []).
 
 run(Filename, Opts) ->
+    io:format("Node: ~p\n", [node()]),
+
     case file:consult(Filename) of
         {ok, File} ->
             logging:conf(Opts),
@@ -252,11 +259,11 @@ run(Filename, Opts) ->
                 {one, Scenario, FileOpts} ->
                     run_scenario(Scenario, Opts ++ FileOpts);
                 {bench, Bench, FileOpts} ->
-                    [ run_bench(Bench, Opts ++ FileOpts) ||
-                        _ <- lists:seq(1, 1) ];
+                    run_bench(Bench, Opts ++ FileOpts);
                 {gen, Gen, FileOpts} ->
                     {Type, _Rep, Size} = Gen,
                     Scen = gen_gen(Type, Size),
+                    %% io:format("GEN: ~p\n\n", [Scen]),
                     run_scenario(Scen, Opts ++ FileOpts)
             end;
 
@@ -301,23 +308,23 @@ gen_gen(dead, Size) ->
             || I <- lists:seq(1, Size - GroupSize * Groups + 1)
           ]
      );
-gen_gen(dead, Size) ->
-    Trees = ceil(math:sqrt(Size)),
-    scenario_gen:generate(
-      [ {tree, I, lists:seq(0, Size)}
-        || I <- lists:seq(1, Trees)
-      ] ++ [{loop, deadlocker, {lists:seq(0, Size), [{delay, 2 * Size}]}}]
-     );
+%% gen_gen(dead, Size) ->
+%%     Trees = ceil(math:sqrt(Size)),
+%%     scenario_gen:generate(
+%%       [ {tree, I, lists:seq(0, Size)}
+%%         || I <- lists:seq(1, Trees)
+%%       ] ++ [{loop, deadlocker, {lists:seq(0, Size), [{delay, 2 * Size}]}}]
+%%      );
 gen_gen(conditional, Size) ->
-    GroupSize = ceil(math:sqrt(Size)) * 2,
+    GroupSize = ceil(math:sqrt(Size)),
     Groups = Size div GroupSize,
-    Provos = max(1, Size - GroupSize * Groups),
+    %% Provos = max(1, Size - GroupSize * Groups),
     %% MinLen = ceil(math:sqrt(GroupSize)),
     scenario_gen:generate(
       [
         {envelope, I,
          { lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1)
-         , [ {safe, 0.5 + rand:uniform() / 2}
+         , [ {safe, 0.8 + rand:uniform() / 5}
            ]
          }
         }
@@ -325,7 +332,7 @@ gen_gen(conditional, Size) ->
       ]
       ++
           [ begin
-                Space = lists:seq(0, Size div 2),
+                Space = lists:seq(0, Size),
                 %% Space = lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1),
                 %% Space = element(1, lists:split(GroupSize div 2, scenario_gen:shuffle(lists:seq(1, Size)))),
                 %% io:format("PROVO: ~p ~p ~p", [I, Size + I, Space]),
@@ -348,18 +355,18 @@ gen_gen(conditional, Size) ->
     %%   ]).
 
 run_bench(Bench, Opts) ->
-    Scens = [{Type, Size, gen_gen(Type, Size)} || {Type, Reps, Size} <- Bench,
-                                                  _ <- lists:seq(1, Reps)
-            ],
     %% io:format("\n\nGEN: ~p\n\n", [Scens]),
-    run_many(Scens, Opts).
+    run_many(Bench, Opts).
 
 
--define(GRID_WIDTH, 80).
-grid_printer(Ws) ->
-    State = maps:from_list([{W, busy} || W <- Ws]),
+-define(GRID_WIDTH, 50).
+grid_printer() ->
+    receive {workers, Ws, MaxSize} -> grid_printer(Ws, MaxSize) end.
+grid_printer(Ws, MaxSize) ->
+    State = maps:from_list([{W, init} || W <- Ws]),
+    print_size(0, MaxSize),
     print_grid(State),
-    grid_printer_loop(State).
+    grid_printer_loop(State, 0, MaxSize).
 print_grid(State) ->
     S = "[" ++
         print_grid(lists:sort(maps:to_list(State)), 0) ++
@@ -371,65 +378,108 @@ print_grid(Ws, ?GRID_WIDTH) ->
     "\n " ++
         print_grid(Ws, 0);
 print_grid([{_W, S}|Ws], I) ->
-    io_lib:format(" ~s", [case S of busy -> "_"; done -> "#"; dead -> "@" end]) ++
+    io_lib:format(" ~s", [case S of
+                              init -> ".";
+                              woke -> "o";
+                              busy -> "O";
+                              done -> "@";
+                              dead -> "#";
+                              down -> "!"
+                          end]) ++
         print_grid(Ws, I + 1).
+print_size(Size, MaxSize) ->
+    Width = ?GRID_WIDTH * 2,
+    Percent = (Width * Size) div (MaxSize * 2),
+    Free = Width - Percent,
+    io:format("\r~s\r>>~s~s<<\n", [ lists:flatten([" " || _ <- lists:seq(1, Width + 4)])
+                                , lists:flatten(["-" || _ <- lists:seq(1, Percent)])
+                                , lists:flatten([if Free < 0 -> "~"; true -> " " end || _ <- lists:seq(1, abs(Free))])
+                                ]).
 clean_grid(Ws) ->
-    Height = (maps:size(Ws) div ?GRID_WIDTH) + 1,
+    Height = ((maps:size(Ws) - 1) div ?GRID_WIDTH) + (_CompensateMinus1 = 1) + (_SizeRow = 1),
     io:format("\e[~pA\r", [Height]).
-grid_printer_loop(State) ->
+grid_printer_loop(State, Size, MaxSize) ->
     receive
-        {update, W, S} ->
+        {update, W, WSize, S} ->
             State1 = State#{W => S},
+            Size1 = Size + WSize,
             clean_grid(State1),
+            print_size(Size1, MaxSize),
             print_grid(State1),
-            grid_printer_loop(State1);
+            grid_printer_loop(State1, Size1, MaxSize);
         {From, finito} ->
             From ! {self(), ok}
     end.
 
-run_many(Scenarios, Opts) ->
+get_results(Workers, Max, Printer) ->
+    get_results([], Workers, 0, Max, Printer, []).
+get_results([], [], _CurrSize, _Max, _Printer, Acc) ->
+    Acc;
+get_results(Current, Queue, CurrSize, Max, Printer, Acc) ->
+    case CurrSize >= Max orelse Queue =:= [] of
+        true ->
+            receive
+                {'DOWN', _, process, W, E} when E =/= normal ->
+                    [Size] = [S || {Ww, S} <- Current, Ww =:= W],
+                    Printer ! {update, W, -Size, down},
+                    %% erlang:garbage_collect(W, [{type, minor}]),
+                    get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, Acc);
+                {success, _Ref, W, Type, Size, Stats, Res} ->
+                    %% erlang:garbage_collect(W, [{type, minor}]),
+                    get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, [{Type, Size, Stats, Res}|Acc])
+            end;
+        false ->
+            [{T, S, W, _}|Ws] = Queue,
+            W ! {work, T, S},
+            get_results([{W, S}|Current], Ws, CurrSize + S, Max, Printer, Acc)
+    end.
+
+run_many(Bench, Opts) ->
     Self = self(),
     Ref = make_ref(),
+    Printer = spawn(fun grid_printer/0),
+
     Workers =
         [ begin
-              R = rand:uniform(2137),
-              spawn_monitor(
+              R = rand:uniform(21370000),
+              {P, MonRef} = spawn_monitor(
                 fun() ->
+                        {Type, Size} = receive {work, T, S} -> {T, S} end,
+                        Printer ! {update, self(), Size, woke},
+                        Scenario = gen_gen(Type, Size),
                         SOpts = [ {seed, R}
                                 , silent
-                                | proplists:delete(csv, Opts)],
+                                | proplists:delete(stats_csv, Opts)],
+                        Printer ! {update, self(), 0, busy},
                         {Log, Result} = run_scenario(Scenario, SOpts),
+                        Printer ! {update, self(), -Size, case Result of ok -> done; _ -> dead end},
                         Stats = logging:log_stats(Log),
-                        Self ! {Ref, self(), Type, Size, Stats, Result}
-                end)
+                        logging:delete(),
+                        Self ! {success, Ref, self(), Type, Size, Stats, Result}
+                end),
+              {WType, WSize, P, MonRef}
           end
-                  || {Type, Size, Scenario} <- Scenarios
-          ],
+          || {WType, Reps, WSize} <- Bench,
+             _ <- lists:seq(1, Reps)
+        ],
 
-    Printer = spawn(fun() -> grid_printer(Workers) end),
+    MAX_SIZE = 150000,
 
-    Stats = [ receive
-                  {Ref, _, Type, Size, Stats, Res} ->
-                      Printer ! {update, W, done},
-                      {Type, Size, Stats, Res};
-                  {'DOWN', _, process, W, _} ->
-                      Printer ! {update, W, dead},
-                      down
-              end
-              || W <- Workers
-            ],
+    Printer ! {workers, [W || {_, _, W, _} <- Workers], MAX_SIZE},
+    Stats = get_results(scenario_gen:shuffle(Workers), MAX_SIZE, Printer),
 
     Printer ! {self(), finito},
     receive {Printer, ok} -> ok end,
 
-    Appending = filelib:is_file(proplists:get_value(csv, Opts, "")),
-    LogFile = proplists:get_value(csv, Opts, <<"/dev/stdout">>),
+    %% Appending = filelib:is_file(proplists:get_value(stats_csv, Opts, "")),
+    LogFile = proplists:get_value(stats_csv, Opts, <<"/dev/stdout">>),
     io:format("Writing log to: ~s\n", [LogFile]),
 
     {ok, Log} = file:open(binary:bin_to_list(LogFile), [append]),
 
-    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
-                [I,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end, Deadlocks])
+    io:format(Log, "run,time,type,size,total,sent,inits,mon_mon,proc_mon,mon_proc,proc_proc,queries,replies,probes,success,deadlock\n", []),
+    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
+                [I,Time,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end, Deadlocks])
       || {I, {Type, Size,
               #{total := Total,
                 sent := Sent,
@@ -444,7 +494,8 @@ run_many(Scenarios, Opts) ->
                 unlocks := _Unlocks,
                 locks := _Locks,
                 deadlocks := Deadlocks,
-                picks := _Picks
+                picks := _Picks,
+                time := Time
                }, Result}} <- lists:enumerate(Stats)
     ],
     case LogFile of

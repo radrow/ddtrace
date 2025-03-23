@@ -2,7 +2,7 @@
 
 -include("dlstalk.hrl").
 
--export([conf/1, mk_ets/0, remember/2, remember/3]).
+-export([conf/1, mk_ets/0, delete/0, remember/2, remember/3]).
 
 -export([ log_terminate/0
         , log_scenario/2
@@ -26,6 +26,10 @@ mk_ets() ->
     put(?KNOWN_ETS, Known),
     put(?FRESH_ETS, Fresh),
     {Known, Fresh}.
+
+delete() ->
+    ets:delete(get(?KNOWN_ETS)),
+    ets:delete(get(?FRESH_ETS)).
 
 conf(LogConf) ->
     case proplists:get_value(logging_ets_known, LogConf) of
@@ -293,7 +297,8 @@ ev_class(E) when element(1, E) =:= wait;
 ev_class(_) ->
     [].
 
-log_stats(Log) ->
+log_stats(Log0) ->
+    Log = [L || L <- Log0, L =/= ignore],
     Classes = lists:map(fun ev_class/1, Log),
 
     Count = fun FCount(L) when is_list(L) ->
@@ -316,7 +321,9 @@ log_stats(Log) ->
       locks => Count([state, locked]),
       unlocks => Count([state, unlocked]),
       deadlocks => Count([state, deadlocked]),
-      picks => Count([pick])
+      picks => Count([pick]),
+      time => case lists:last(Log) of {{LTime, _}, _, _} -> LTime end -
+          case hd(Log) of {{FTime, _}, _, _} -> FTime end
      }.
 
 
@@ -334,7 +341,8 @@ print_log_stats(Log) ->
       unlocks := Unlocks,
       locks := Locks,
       deadlocks := Deadlocks,
-      picks := Picks
+      picks := Picks,
+      time := Time
      } = log_stats(Log),
 
     print(io_lib:format("Registered ~p events:\n"
@@ -352,11 +360,12 @@ print_log_stats(Log) ->
                         "State changes:\n"
                         "\t~p\tunlocks\n"
                         "\t~p\tlocks\n"
-                        "\t~p\tdeadlocks\n",
+                        "\t~p\tdeadlocks\n"
+                        "Time: ~p\n",
                         [Total,
                          Sent, Queries, Replies, Probes, Picks,
                          Inits, MonMon, ProcMon, MonProc, ProcProc,
-                         Unlocks, Locks, Deadlocks])).
+                         Unlocks, Locks, Deadlocks, Time])).
 
 
 trace_csv_header() ->

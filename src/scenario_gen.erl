@@ -41,7 +41,7 @@ loop(Name, {[First|Feed], Opts}) ->
 
 %% Sequence of threads; each eventually locks on the next one in line
 envelope(Name, {Feed, Opts}) ->
-    SplitRate = proplists:get_value(split_rate, Opts, 0.7),
+    SplitRate = proplists:get_value(split_rate, Opts, 0.2),
     Splits = random_splits(Feed, SplitRate),
     Splits0 = case proplists:get_value(min_len, Opts) of
                   undefined -> Splits;
@@ -203,7 +203,7 @@ stretch_splits([S0,S1|Ss], L) ->
 
 
 random_splits(L) ->
-    random_splits(L, 0.7).
+    random_splits(L, 0.2).
 
 random_splits(L, Rate) when is_float(Rate) ->
     Splits = [0 | [I || I <- lists:seq(1, length(L)), rand:uniform() < Rate]],

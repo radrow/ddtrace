@@ -2,57 +2,66 @@ import argparse
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-from adjustText import adjust_text 
 
-def bench_file(filepath, column="sent", name="", color="red", label=None):
+def bench_file(filepath, column="sent", name="", color="red", label=None, plot=plt):
     data = pd.read_csv(filepath, keep_default_na=False)
 
-    data['service'] = data['mon_mon'] + data['proc_proc']
-    data['sent'] -= data['inits']  # We don't want to count initiator calls
+    data['service'] = data['mon_mon'] + data['proc_proc'] - data['probes']
+    data['site'] = data['mon_mon'] + data['proc_proc']
 
     data = data[['size', column]].groupby('size', as_index=False)[column].agg(['mean', 'std']).reset_index()
     # data = data[['size', column]].groupby('size', as_index=False).mean()
 
-    plt.fill_between(data['size'], data['mean'] - data['std'], data['mean'] + data['std'], color=color, alpha=0.05)
+    plt.fill_between(data['size'], data['mean'] - data['std'], data['mean'] + data['std'], color=color, alpha=0.1)
     plt.plot(data['size'], data['mean'], label=label, color=color)
-    plt.axhline(data['mean'].max(), color=color, linestyle="--", alpha=0.5, label=f"Max average = {data['mean'].max()} (at {data.loc[data['mean'].idxmax(), 'size']} processes)")
+    # plt.axhline(data['mean'].max(), color=color, linestyle="--", alpha=0.5, label=f"Max average = {data['mean'].max()} (at {data.loc[data['mean'].idxmax(), 'size']} processes)")
 
-def bench(column, label, show=False):
-    bench_file("benchmark_probe-delay_5000ms.csv", name="delayed (5s)", color="green", column=column, label="Probe delay = 5000ms")
-    bench_file("benchmark_probe-delay_1000ms.csv", name="delayed (1s)", color="orange", column=column, label="Probe delay = 1000ms")
-    bench_file("benchmark_no-probe-delay.csv", name="eager", color="red", column=column, label="Probe delay = 0")
-    bench_file("benchmark_unmonitored.csv", name="unmonitored", color="blue", column=column, label="Unmonitored")
+def bench(column, label=None, show=False, plot=plt):
+    bench_file("benchmark_probe-delay_5000ms.csv", name="delayed (5s)", color="green", column=column, label="Probe delay = 5000ms", plot=plot)
+    bench_file("benchmark_probe-delay_1000ms.csv", name="delayed (1s)", color="orange", column=column, label="Probe delay = 1000ms", plot=plot)
+    # bench_file("benchmark_probe-delay_100ms.csv", name="delayed (100ms)", color="orange", column=column, label="Probe delay = 100ms", plot=plot)
+    bench_file("benchmark_no-probe-delay.csv", name="eager", color="red", column=column, label="Probe delay = 0", plot=plot)
+    bench_file("benchmark_unmonitored.csv", name="unmonitored", color="blue", column=column, label="Unmonitored", plot=plot)
 
     # Labels and legend
     plt.xlabel("Number of services")
     plt.ylabel(f"Average {label}")
-    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 
     if show:
         plt.show()
     else:
-        plt.savefig(f"benchmark_{column}.png", dpi=600, bbox_inches="tight")
+        plt.savefig(f"benchmark_{column}.pdf", dpi=600, bbox_inches="tight")
         plt.close()
 
-def plot_data_type(data, val):
-    data['where'] = ((data['data_type'] == val) * (data['event_type'] == 'send')) + 0
-    data = data[['timestamp', 'where']]
-    plt.plot(data['timestamp'], data['where'].cumsum(), label=val)
+
+def plot_data_type(data, val, **kwargs):
+    cumcol = 'cum' + val
+    data[cumcol] = ((data.data_type == val)  # Select message class
+                    * (data.event_type == 'send')  # Only sent
+                    * (data.who_type == data.other_type)  # Only same-class sender and receiver
+                    ) + 0
+    data[cumcol] = data[cumcol].cumsum()
+    data = data[['timestamp', cumcol]]
+    plt.plot(data['timestamp'], data[cumcol], **kwargs)
+
 
 def plot_states(data, state):
-    data = data[data['data_type'] == state]
-    for t in data['timestamp']:
-        plt.axvline(x=t, color='red', linestyle='--')
+    for t in data[data.data_type == state]['timestamp']:
+        plt.plot(t, data.loc[(data.timestamp - t).abs().idxmin()]['cumprobe'], 'ro', color='r')
+        # plt.axvline(x=t, color='red', linestyle='--')
+
 
 def timeseries(filepath, label=None, show=False):
     data = pd.read_csv(filepath, keep_default_na=False)
     data['timestamp'] = pd.to_datetime(data['timestamp'], unit='us')
 
+    plot_data_type(data, 'query', label="Queries", color="b")
+
+    plot_data_type(data, 'probe', label="Probes", color="orange")
     plot_states(data, 'deadlocked')
 
-    plot_data_type(data, 'query')
-    plot_data_type(data, 'probe')
-    plot_data_type(data, 'reply')
+    plot_data_type(data, 'reply', label="Responses", color="g")
 
     # Labels and formatting
     plt.xlabel('Timestamp')
@@ -64,13 +73,15 @@ def timeseries(filepath, label=None, show=False):
     if show:
         plt.show()
     else:
-        plt.savefig(Path(filepath).with_suffix(".png"), dpi=600, bbox_inches="tight")
+        plt.savefig(Path(filepath).with_suffix(".pdf"), dpi=600, bbox_inches="tight")
         plt.close()
 
+
 def gen_plots():
-    bench('service', "number of service messages sent")
-    bench('sent', "number of all messages sent")
-    bench('probes', "number of probes sent")
+    bench('site', "messages sent between services")
+    bench('sent', "all messages sent")
+    bench('probes', "probes sent")
+    bench('service', "queries and replies sent")
 
     timeseries("timeseries_no-probe-delay_20k-proc.csv", label="No probe delay; 20k services")
     timeseries("timeseries_probe-delay_500ms_20k-proc.csv", label="Probe delay = 500ms; 20k services")
@@ -88,7 +99,10 @@ def main():
     if args.t:
         timeseries(args.t, show=True)
     elif args.b:
-        bench(args.b, show=True)
+        bench_file(args.b, 'service')
+        bench_file(args.b, 'sent')
+        bench_file(args.b, 'probes')
+        plt.show()
     else:
         gen_plots()
 

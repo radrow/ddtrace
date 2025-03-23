@@ -9,10 +9,11 @@
 -export([start/3, start_link/3]).
 
 %% gen_server interface
--export([call/2, cast/2]).
+-export([call/2, call/3, cast/2, stop/2, stop/3]).
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
+-export([terminate/3, terminate/2]).
 
 %% States
 -export([unlocked/3, locked/3, deadlocked/3]).
@@ -32,7 +33,8 @@
                waitees :: list(pid())
               }).
 -record(deadstate,{worker :: pid(),
-                   deadlock :: list(pid())
+                   deadlock :: list(pid()),
+                   req_id :: gen_statem:request_id()
                   }).
 
 state_get_worker(#state{worker = Worker}) ->
@@ -71,16 +73,24 @@ start_link(Module, Args, Options) ->
 %%%======================
 
 call(Server, Request) ->
+    call(Server, Request, 5000).
+call(Server, Request, Timeout) ->
     case get(?MON_PID) of
         undefined ->
-            gen_server:call(Server, Request);
+            gen_server:call(Server, Request, Timeout);
         Mon ->
-            gen_statem:call(Mon, {Request, Server})
+            gen_statem:call(Mon, {Request, Server}, Timeout)
     end.
 
 cast(Server, Message) ->
     gen_server:cast(Server, Message).
 
+
+stop(Server, Reason, Timeout) ->
+    gen_server:stop(Server, Reason, Timeout).
+
+stop(Server, Reason) ->
+    gen_server:stop(Server, Reason).
 
 %%%======================
 %%% gen_statem Callbacks
@@ -102,6 +112,21 @@ init({Module, Args, Options}) ->
         E -> E
     end.
 
+
+terminate(_Reason, _Data) ->
+    ok.
+
+terminate(_Reason, _State, _Data) ->
+    ok.
+
+%% terminate(Reason, #state{worker = Worker}) ->
+%%     erlang:unlink(Worker),
+%%     gen_server:stop(Worker, Reason, 3000);
+%% terminate(Reason, #deadstate{worker = Worker}) ->
+%%     erlang:unlink(Worker),
+%%     gen_server:stop(Worker, Reason, 3000).
+
+
 callback_mode() ->
     [state_functions, state_enter].
 
@@ -114,10 +139,10 @@ unlocked({call, From}, '$get_child', #state{worker = Worker}) ->
 
 
 %% Our service wants a call to itself (either directly or the monitor)
-unlocked({call, {Worker, _PTag}}, {_Msg, Server}, _State = #state{worker = Worker})
+unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker})
   when Server =:= Worker orelse Server =:= self() ->
     {next_state, deadlocked,
-     #deadstate{worker = Worker, deadlock = [self()]}
+     #deadstate{worker = Worker, deadlock = [self()], req_id = PTag}
     };
 
 %% Our service wants a call
@@ -157,6 +182,14 @@ unlocked(cast, Msg, #state{worker = Worker}) ->
 unlocked(cast, {?SCHEDULED_PROBE, _To, _Probe}, _State) ->
     keep_state_and_data;
 
+%% Process died
+unlocked(info, {'DOWN', _, process, Worker, Reason}, #state{worker=Worker}) ->
+    {stop, Reason};
+
+%% Someone (???) died
+unlocked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
+    keep_state_and_data;
+
 %% Process sent a reply (or not)
 unlocked(info, Msg, State = #state{waitees = Waitees0, worker = Worker}) ->
     case gen_statem:check_response(Msg, Waitees0, _Delete = true) of
@@ -167,7 +200,7 @@ unlocked(info, Msg, State = #state{waitees = Waitees0, worker = Worker}) ->
 
         no_reply ->
             %% Unknown info. Let the process handle it.
-            worker ! Msg,
+            Worker ! Msg,
             keep_state_and_data;
 
         {{reply, Reply}, From, Waitees1} ->
@@ -214,12 +247,20 @@ locked({call, From}, Msg, State = #state{req_tag = PTag, waitees = Waitees0}) ->
      State#state{waitees = Waitees1}
     };
 
+%% Process died
+locked(info, {'DOWN', _, process, Worker, Reason}, #state{worker=Worker}) ->
+    {stop, Reason};
+
+%% Someone (???) died
+locked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
+    keep_state_and_data;
+
 %% Incoming reply
 locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId}) ->
     case gen_statem:check_response(Msg, ReqId) of
         no_reply ->
             %% Unknown info. Let the process handle it.
-            worker ! Msg,
+            Worker ! Msg,
             keep_state_and_data;
 
         {reply, Reply} ->
@@ -231,8 +272,8 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
     end;
 
 %% Incoming own probe. Alarm! Panic!
-locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag}) ->
-    {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | Chain]}};
+locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_id = ReqId}) ->
+    {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | Chain], req_id = ReqId}};
 
 %% Incoming probe
 locked(cast, {?PROBE, Probe, Chain}, #state{waitees = Waitees}) ->
@@ -267,7 +308,9 @@ deadlocked(enter, _OldState, _State) ->
 deadlocked({call, From}, '$get_child', #deadstate{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
-deadlocked({call, _From}, _, _State) ->
+deadlocked({call, _From}, Msg, State) ->
+    %% Forward to the process, who cares
+    gen_server:send_request(State#deadstate.worker, Msg),
     keep_state_and_data;
 
 %% Probe
@@ -281,4 +324,25 @@ deadlocked(cast, {?SCHEDULED_PROBE, _To, _Probe}, _State) ->
 %% Unknown cast
 deadlocked(cast, Msg, #deadstate{worker = Worker}) ->
     gen_server:cast(Worker, Msg),
-    keep_state_and_data.
+    keep_state_and_data;
+
+%% Process died
+deadlocked(info, {'DOWN', _, process, Worker, Reason}, #state{worker=Worker}) ->
+    {stop, Reason};
+
+%% Someone (???) died
+deadlocked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
+    keep_state_and_data;
+
+%% Incoming random message
+deadlocked(info, Msg, #deadstate{worker = Worker, req_id = ReqId}) ->
+    case gen_statem:check_response(Msg, ReqId) of
+        no_reply ->
+            %% Forward to the process, who cares
+            Worker ! Msg,
+            keep_state_and_data;
+
+        {reply, Reply} ->
+            %% A reply after deadlock?!
+            error({'REPLY_AFTER_DEADLOCK', Reply})
+    end.
