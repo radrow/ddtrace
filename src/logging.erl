@@ -4,6 +4,8 @@
 
 -export([conf/1, mk_ets/0, delete/0, remember/2, remember/3]).
 
+-export([type/1]).
+
 -export([ log_terminate/0
         , log_scenario/2
         , log_timeout/0

@@ -6,6 +6,7 @@ defmodule Dlstalk.Main do
     \t--timeout\tSets timeout for the simulation. If not provided or set to 0, it is estimated by the script.
     \t--trace-proc\tTrace events in monitored services
     \t--trace-mon\tTrace events in monitored services (default)
+    \t--trace-int\tTrace internal events (default)
     \t--live-log\tPrint logs from the tracer instead of retroactively
     \t--indent\tHow many tabs should log cells be separated with; 0 means no tabulation (default 4)
     \t--csv\tOutput log file in CSV format
@@ -28,6 +29,7 @@ defmodule Dlstalk.Main do
     args = System.argv()
     switches = [trace_proc: :boolean,
                 trace_mon: :boolean,
+                trace_int: :boolean,
                 live_log: :boolean,
                 help: :boolean,
                 timeout: :integer,

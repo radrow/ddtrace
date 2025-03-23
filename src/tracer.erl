@@ -22,6 +22,7 @@ run_tracer(Init, Procs, Opts) ->
 
     TraceProc = proplists:get_value(trace_proc, Opts, false),
     TraceMon = proplists:get_value(trace_mon, Opts, true),
+    put(trace_int, proplists:get_value(trace_int, Opts, true)),
     put(live_log, proplists:get_value(live_log, Opts, false)),
 
     TraceOpts = ['send', 'receive', 'call', strict_monotonic_timestamp],
@@ -103,6 +104,7 @@ finish(Tracer, Tracees) ->
             Log
     end.
 
+-define(IF_OPT(OPT, LOG), case get(OPT) of true -> LOG; _ -> ignore end).
 
 %% State change
 handle({trace_ts, Who, 'call',
@@ -119,30 +121,32 @@ handle({trace_ts, Who, 'call',
 %% Pick query
 handle({trace_ts, Who, 'call',
         {dlstalk, _, [{call, {From, _}}, Msg, Internal]}, Time}) ->
-    case dlstalk:state_get_worker(Internal) == From of
-        false ->
-            %% External
-            {Time, Who, {pick, {query, From, Msg}}};
-        true ->
-            %% Process calls
-            {ProcMsg, Server} = Msg,
-            {Time, Who, {pick, {proc_query, Server, ProcMsg}}}
-    end;
+    ?IF_OPT(trace_int,
+            case dlstalk:state_get_worker(Internal) == From of
+                false ->
+                    %% External
+                    {Time, Who, {pick, {query, From, Msg}}};
+                true ->
+                    %% Process calls
+                    {ProcMsg, Server} = Msg,
+                    {Time, Who, {pick, {proc_query, Server, ProcMsg}}}
+            end);
 
 %% Pick reply (unlocked --- from proc)
 handle({trace_ts, Who, 'call',
         {dlstalk, unlocked, [info, {_From, Msg}, _]}, Time}) ->
-    {Time, Who, {pick, {proc_reply, Msg}}};
+
+    ?IF_OPT(trace_int, {Time, Who, {pick, {proc_reply, Msg}}});
 
 %% Pick reply (locked --- external)
 handle({trace_ts, Who, 'call',
         {dlstalk, locked, [info, {_From, Msg}, _]}, Time}) ->
-    {Time, Who, {pick, {reply, Msg}}};
+    ?IF_OPT(trace_int, {Time, Who, {pick, {reply, Msg}}});
 
 %% Pick probe
 handle({trace_ts, Who, 'call',
         {dlstalk, _, [cast, {?PROBE, Probe, _Chain}, _]}, Time}) ->
-    {Time, Who, {pick, {probe, Probe}}};
+    ?IF_OPT(trace_int, {Time, Who, {pick, {probe, Probe}}});
 
 %% Pick cast
 handle({trace_ts, _Who, 'call',
@@ -159,7 +163,7 @@ handle({trace_ts, Who, 'receive',
         {'$gen_call', {FromPid, ReqId}, Msg},
         Time
        }) when is_reference(ReqId) ->
-    {Time, Who, {recv, {query, FromPid, Msg}}};
+    ?IF_OPT(trace_int, {Time, Who, {recv, {query, FromPid, Msg}}});
 
 %% Receive query (gen_server --- with alias)
 handle({trace_ts, Who, 'receive',
@@ -181,7 +185,7 @@ handle({trace_ts, Who, 'receive',
         {[alias|ReqId], Msg},
         Time
        }) when is_reference(ReqId) ->
-    {Time, Who, {recv, {reply, Msg}}};
+    ?IF_OPT(trace_int, {Time, Who, {recv, {reply, Msg}}});
 
 %% Receive probe
 handle({trace_ts, Who, 'receive',
@@ -209,21 +213,26 @@ handle({trace_ts, Who, 'send',
         {'$gen_call', _From, Msg}, To,
         Time
        }) ->
-    {Time, Who, {send, To, {query, Msg}}};
+    Log = {Time, Who, {send, To, {query, Msg}}},
+    case {logging:type(Who), logging:type(To)} of
+        {'M', 'P'} -> ?IF_OPT(trace_int, Log);
+        _ -> Log
+    end;
 
 %% Send reply (gen_server --- with alias)
 handle({trace_ts, Who, 'send',
         {[alias|ReqId], Msg}, ReqId,
         Time
        }) when is_reference(ReqId) ->
-    {Time, Who, {send, get({alias, ReqId}), {reply, Msg}}};
+    To = get({alias, ReqId}),
+    {Time, Who, {send, To, {reply, Msg}}};
 
 %% Send reply (gen_statem --- no alias)
 handle({trace_ts, Who, 'send',
         {ReqId, Msg}, To,
         Time
        }) when is_reference(ReqId) ->
-    {Time, Who, {send, To, {reply, Msg}}};
+    ?IF_OPT(trace_int, {Time, Who, {send, To, {reply, Msg}}});
 
 %% Send probe
 handle({trace_ts, Who, 'send',
@@ -237,7 +246,7 @@ handle({trace_ts, Who, send,
         {'$gen_cast', {release, Pid}}, To,
         Time
        }) ->
-    {Time, Who, {send, To, {release, Pid}}};
+    ?IF_OPT(trace_int, {Time, Who, {send, To, {release, Pid}}});
 
 %% Scheduled probe
 handle({trace_ts, _Who, send,
@@ -249,7 +258,7 @@ handle({trace_ts, _Who, send,
 %% Process waiting
 handle({trace_ts, Who, 'call',
         {Module, wait, [WaitFor]}, Time}) when Module =:= 'Elixir.Dlstalk.TestServer' ->
-    {Time, Who, {wait, WaitFor}};
+    ?IF_OPT(trace_int, {Time, Who, {wait, WaitFor}});
 
 %% Unhandled
 handle(Trace) when element(1, Trace) =:= trace_ts ->

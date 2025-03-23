@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 
 def bench_file(filepath, column="sent", name="", color="red", label=None, plot=plt):
     data = pd.read_csv(filepath, keep_default_na=False)
@@ -24,9 +25,11 @@ def bench(column, label=None, show=False, plot=plt):
     bench_file("benchmark_unmonitored.csv", name="unmonitored", color="blue", column=column, label="Unmonitored", plot=plot)
 
     # Labels and legend
-    plt.xlabel("Number of services")
-    plt.ylabel(f"Average {label}")
+    # plt.xlabel("Number of services")
+    # plt.ylabel(f"Average {label}")
     # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+
+    plt.grid(axis='both', which='major')
 
     if show:
         plt.show()
@@ -64,9 +67,14 @@ def plot_states(data, state):
         # plt.axvline(x=t, color='red', linestyle='--')
 
 
+def ms_formatter(x, pos=None):
+    return x.strftime('%H:%M:%S.') + f"{x.microsecond // 1000:03d}"
+
+
 def timeseries(filepath, label=None, show=False):
     data = pd.read_csv(filepath, keep_default_na=False)
-    data['timestamp'] = pd.to_datetime(data['timestamp'], unit='us')
+    data['timestamp'] //= 1000  # To milliseconds
+    # data['timestamp'] = pd.to_datetime(data['timestamp'], unit='us')
 
     plot_data_type(data, 'query', label="Queries", color="b")
 
@@ -76,11 +84,14 @@ def timeseries(filepath, label=None, show=False):
     plot_data_type(data, 'reply', label="Responses", color="g")
 
     # Labels and formatting
-    plt.xlabel('Timestamp')
-    plt.ylabel('Number of messages')
-    plt.title(label)
-    plt.xticks(rotation=45)
-    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    # plt.xlabel('Timestamp')
+    # plt.ylabel('Number of messages')
+    # plt.title(label)
+    plt.xticks(rotation=25)
+    plt.gca().xaxis.set_major_formatter(mticker.FormatStrFormatter("%d ms"))
+    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+
+    plt.grid(axis='both', which='major')
 
     if show:
         plt.show()
