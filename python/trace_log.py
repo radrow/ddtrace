@@ -35,6 +35,18 @@ def bench(column, label=None, show=False, plot=plt):
         plt.close()
 
 
+def bench_bar(filepath, **kwargs):
+    data = pd.read_csv(filepath, keep_default_na=False)
+    data['forward'] = data['mon_proc'] + data['proc_mon']
+
+    labels = ['queries', 'replies', 'probes']
+
+    sums = data.sum()
+    bottom = 0
+    for l in labels:
+        plt.bar([0], [sums[l] / sums['sent']], label=l, bottom=bottom)
+        bottom += sums[l]
+
 def plot_data_type(data, val, **kwargs):
     cumcol = 'cum' + val
     data[cumcol] = ((data.data_type == val)  # Select message class
@@ -92,6 +104,7 @@ def main():
 
     parser.add_argument('-t', type=str, help="Timeseries CSV file", required=False)
     parser.add_argument('-b', type=str, help="Benchmark CSV file", required=False)
+    parser.add_argument('-s', type=str, help="Benchmark CSV file", required=False)
 
     # Parse arguments
     args = parser.parse_args()
@@ -102,6 +115,9 @@ def main():
         bench_file(args.b, 'service')
         bench_file(args.b, 'sent')
         bench_file(args.b, 'probes')
+        plt.show()
+    elif args.s:
+        bench_bar(args.s)
         plt.show()
     else:
         gen_plots()
