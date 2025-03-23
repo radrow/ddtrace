@@ -12,6 +12,7 @@ defmodule Dlstalk.Main do
     \t--stats-csv\tOutput stats file in CSV format
     \t--seed\tRNG seed (default unset)
     \t--probe-delay\tWhether to send probes with a delay. 0 means no delay, but asynchronous. -1 (default) means no delay.
+    \t--unmonitored\tRuns services as regular generic servers
     Prefix options with "no-" to disable them, eg. "--no-trace-mon"
     """
   end
@@ -36,6 +37,7 @@ defmodule Dlstalk.Main do
                 seed: :integer,
                 probe_delay: :integer,
                 silent: :boolean,
+                unmonitored: :boolean,
                ]
     {opts, args, bad} = OptionParser.parse(args, strict: switches)
 

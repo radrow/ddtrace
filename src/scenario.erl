@@ -89,7 +89,6 @@ scenario_time(Scenario) ->
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
     Init = self(),
-    code:ensure_loaded('Elixir.Dlstalk.TestServer'),
 
     {LogKnown, LogFresh} = logging:mk_ets(),
     logging:conf(Opts),
@@ -99,18 +98,21 @@ run_scenario(Scenario, Opts) ->
 
     {ok, Supervisor} = scenario_supervisor:start_link(),
 
+    GsModule = 'Elixir.Dlstalk.TestServer',
+    {module, _} = code:ensure_loaded(GsModule),
+
     ProcMap = maps:from_list(
             [ begin
                   Args = case proplists:lookup(I, Routers) of
                              {I, N} -> {router, N};
                              none -> worker
                          end,
-                  ChildSpec = #{id => I,
-                                start => {'Elixir.Dlstalk.TestServer', start_link,
-                                          [I, Args, [{dlstalk_opts, Opts}]]},
-                                restart => transient,
-                                shutdown => 5000,
-                                type => worker},
+                  ChildSpec =
+                      #{id => I,
+                        start => {GsModule, start_link, [I, Args, [{dlstalk_opts, Opts}]]},
+                        restart => transient,
+                        shutdown => 5000,
+                        type => worker},
                   {ok, M} = supervisor:start_child(Supervisor, ChildSpec),
                   P = gen_statem:call(M, '$get_child'),
                   logging:remember(M, 'M', I),
@@ -379,12 +381,12 @@ print_grid(Ws, ?GRID_WIDTH) ->
         print_grid(Ws, 0);
 print_grid([{_W, S}|Ws], I) ->
     io_lib:format(" ~s", [case S of
-                              init -> ".";
-                              woke -> "o";
-                              busy -> "O";
-                              done -> "@";
-                              dead -> "#";
-                              down -> "!"
+                              init -> ansi_color:render({[white, bold], "."});
+                              woke -> ansi_color:render({[yellow, bold, dim], "o"});
+                              busy -> ansi_color:render({[yellow_l, bold], "O"});
+                              done -> ansi_color:render({[green, bold], "@"});
+                              dead -> ansi_color:render({[violet, bold, dim], "#"});
+                              down -> ansi_color:render({[red, blink, bold], "!"})
                           end]) ++
         print_grid(Ws, I + 1).
 print_size(Size, MaxSize) ->

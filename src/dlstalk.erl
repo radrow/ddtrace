@@ -62,10 +62,22 @@ deadstate_get_deadlock(State) ->
 %%%======================
 
 start(Module, Args, Options) ->
-    gen_statem:start(?MODULE, {Module, Args, Options}, Options).
+    %% We allow running unmonitored systems via options
+    case proplists:get_value(unmonitored, proplists:get_value(dlstalk_opts, Options, []), false) of
+        true ->
+            gen_server:start(Module, Args, Options);
+        false ->
+            gen_statem:start(?MODULE, {Module, Args, Options}, Options)
+    end.
 
 start_link(Module, Args, Options) ->
-    gen_statem:start_link(?MODULE, {Module, Args, Options}, Options).
+    %% We allow running unmonitored systems via options
+    case proplists:get_value(unmonitored, proplists:get_value(dlstalk_opts, Options, []), false) of
+        true ->
+            gen_server:start_link(Module, Args, Options);
+        false ->
+            gen_statem:start_link(?MODULE, {Module, Args, Options}, Options)
+    end.
 
 
 %%%======================
