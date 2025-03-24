@@ -291,7 +291,7 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
 %% Incoming own probe. Alarm! Panic!
 locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
     [ begin
-          gen_statem:cast(W, {?YOU_DIED, Chain})
+          gen_statem:cast(W, {?YOU_DIED, [self() | Chain]})
       end
       || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
     ],
@@ -320,7 +320,7 @@ locked(cast, {?SCHEDULED_PROBE, To, Probe = {?PROBE, PTagProbe, _}}, #state{req_
 %% Deadlock information
 locked(cast, {?YOU_DIED, DL}, #state{waitees = Waitees, worker = Worker, req_id = ReqId}) ->
     [ begin
-          gen_statem:cast(W, {?YOU_DIED, DL})
+          gen_statem:cast(W, {?YOU_DIED, [self() | DL]})
       end
       || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
     ],
@@ -330,7 +330,6 @@ locked(cast, {?YOU_DIED, DL}, #state{waitees = Waitees, worker = Worker, req_id 
 locked(cast, Msg, #state{worker = Worker}) ->
     gen_server:cast(Worker, Msg),
     keep_state_and_data.
-
 
 %% We are fffrankly in a bit of a trouble
 deadlocked(enter, _OldState, _State) ->

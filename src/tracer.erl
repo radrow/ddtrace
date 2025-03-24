@@ -208,6 +208,13 @@ handle({trace_ts, _Who, 'receive',
        }) ->
     ignore;
 
+%% Deadlock notification
+handle({trace_ts, _Who, 'receive',
+        {'$gen_cast', {?YOU_DIED, _DL}},
+        _Time
+       }) ->
+    ignore;
+
 %% Send query (gen_statem --- no alias)
 handle({trace_ts, Who, 'send',
         {'$gen_call', _From, Msg}, To,
