@@ -255,6 +255,13 @@ handle({trace_ts, _Who, send,
        }) ->
     ignore;
 
+%% Deadlock notification
+handle({trace_ts, _Who, send,
+        {'$gen_cast', {?YOU_DIED, _DL}}, _To,
+        _Time
+       }) ->
+    ignore;
+
 %% Process waiting
 handle({trace_ts, Who, 'call',
         {Module, wait, [WaitFor]}, Time}) when Module =:= 'Elixir.Dlstalk.TestServer' ->

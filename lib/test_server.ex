@@ -2,7 +2,6 @@ defmodule Dlstalk.TestServer do
   use GenServer
   alias :dlstalk, as: GenServer  # Comment this line to switch off monitoring
 
-
   def start_link(id, kind, opts) do
     GenServer.start_link(__MODULE__, {id, kind, opts}, opts)
   end
@@ -56,11 +55,11 @@ defmodule Dlstalk.TestServer do
   end
 
 
-  def handle_cast({:release, worker}, _from, {:route, free, busy}) do
+  def handle_cast({:release, worker}, {:route, free, busy}) do
     {:noreply, {:route, [worker|free], List.delete(busy, worker)}}
   end
 
-  def handle_cast(_cast, _from, state) do
+  def handle_cast(_msg, state) do
     {:noreply, state}
   end
 
@@ -132,10 +131,5 @@ defmodule Dlstalk.TestServer do
     # This function exists mainly for the tracer's pleasure
     :timer.sleep(time)
     :ok
-  end
-
-
-  def handle_cast(_msg, state) do
-    {:noreply, state}
   end
 end
