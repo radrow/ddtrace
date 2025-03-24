@@ -6,7 +6,7 @@
 
 -export([type/1]).
 
--export([ log_terminate/0
+-export([ log_terminate/0, log_deadlock/1
         , log_scenario/2
         , log_timeout/0
         , log_trace/1, log_trace/2
@@ -172,13 +172,22 @@ c_probe(Probe) ->
 c_terminate() ->
     {[green_l, bold, underline, invert], "### TERMINATED ###"}.
 
+c_deadlock(N) ->
+    {[red_l, bold, underline, invert], "### DEADLOCKS (" ++ integer_to_list(N) ++ ") ###"}.
+
 c_timeout() ->
     {[white, bold, underline, invert], "### TIMEOUT ###"}.
 
+
 c_msg(Msg) when is_tuple(Msg) andalso size(Msg) > 0 ->
     c_msg(element(1, Msg));
+c_msg(?YOU_DIED) ->
+    c_deadlock_msg();
 c_msg(Msg) ->
     c_thing(Msg).
+
+c_deadlock_msg() ->
+    {[red, dim], "D"}.
 
 c_thing(Thing) ->
     {[white_l, bold, italic], lists:flatten(io_lib:format("~p", [Thing]))}.
@@ -220,6 +229,9 @@ log_scenario(Scenario, Time) ->
 
 log_terminate() ->
     print(c_terminate()).
+
+log_deadlock(N) ->
+    print(c_deadlock(N)).
 
 log_timeout() ->
     print(c_timeout()).

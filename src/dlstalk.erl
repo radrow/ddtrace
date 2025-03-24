@@ -154,9 +154,9 @@ unlocked({call, From}, '$get_child', #state{worker = Worker}) ->
 unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker, waitees = Waitees})
   when Server =:= Worker orelse Server =:= self() ->
     [ begin
-          gen_statem:cast(W, {?YOU_DIED, [self(), self()]})
+          gen_statem:reply(W, {?YOU_DIED, [self(), self()]})
       end
-      || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
+      || {_, W} <- gen_statem:reqids_to_list(Waitees)
     ],
     {next_state, deadlocked,
      #deadstate{worker = Worker, deadlock = [self(), self()], req_id = PTag}
@@ -273,12 +273,21 @@ locked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
     keep_state_and_data;
 
 %% Incoming reply
-locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId}) ->
+locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
     case gen_statem:check_response(Msg, ReqId) of
         no_reply ->
             %% Unknown info. Let the process handle it.
             Worker ! Msg,
             keep_state_and_data;
+
+        {reply, {?YOU_DIED, DL}} ->
+            %% Deadlock information
+            [ begin
+                  gen_statem:reply(W, {?YOU_DIED, [self() | DL]})
+              end
+              || {_, W} <- gen_statem:reqids_to_list(Waitees)
+            ],
+            {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
 
         {reply, Reply} ->
             %% Pass the reply to the process. We are unlocked now.
@@ -291,9 +300,9 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
 %% Incoming own probe. Alarm! Panic!
 locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
     [ begin
-          gen_statem:cast(W, {?YOU_DIED, [self() | Chain]})
+          gen_statem:reply(W, {?YOU_DIED, [self() | Chain]})
       end
-      || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
+      || {_, W} <- gen_statem:reqids_to_list(Waitees)
     ],
     {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | Chain], req_id = ReqId}};
 
@@ -317,15 +326,6 @@ locked(cast, {?SCHEDULED_PROBE, To, Probe = {?PROBE, PTagProbe, _}}, #state{req_
     end,
     keep_state_and_data;
 
-%% Deadlock information
-locked(cast, {?YOU_DIED, DL}, #state{waitees = Waitees, worker = Worker, req_id = ReqId}) ->
-    [ begin
-          gen_statem:cast(W, {?YOU_DIED, [self() | DL]})
-      end
-      || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
-    ],
-    {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
-
 %% Unknown cast
 locked(cast, Msg, #state{worker = Worker}) ->
     gen_server:cast(Worker, Msg),
@@ -339,11 +339,11 @@ deadlocked({call, From}, '$get_child', #deadstate{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
 %% Incoming external call. We just tell them about the deadlock.
-deadlocked({call, From}, Msg, State = #deadstate{deadlock = DL}) ->
+deadlocked({call, _From}, Msg, State = #deadstate{deadlock = DL}) ->
     %% Forward to the process just in case
     gen_server:send_request(State#deadstate.worker, Msg),
-    gen_statem:cast(element(1, From), {?YOU_DIED, DL}),
-    {keep_state_and_data, no_reply};
+    %% gen_statem:reply(element(1, From),k ),
+    {keep_state_and_data, {?YOU_DIED, DL}};
 
 deadlocked({call, _From}, Msg, State) ->
     %% Forward to the process, who cares
@@ -378,7 +378,8 @@ deadlocked(info, Msg, #deadstate{worker = Worker, req_id = ReqId}) ->
             %% Forward to the process, who cares
             Worker ! Msg,
             keep_state_and_data;
-
+        {reply, {?YOU_DIED, _}} ->
+            keep_state_and_data;
         {reply, Reply} ->
             %% A reply after deadlock?!
             error({'REPLY_AFTER_DEADLOCK', Reply})

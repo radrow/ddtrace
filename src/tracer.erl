@@ -143,6 +143,11 @@ handle({trace_ts, Who, 'call',
         {dlstalk, locked, [info, {_From, Msg}, _]}, Time}) ->
     ?IF_OPT(trace_int, {Time, Who, {pick, {reply, Msg}}});
 
+%% Pick deadlock notification
+handle({trace_ts, _Who, 'call',
+        {dlstalk, _, [info, {_, {?YOU_DIED, _}}, _]}, _Time}) ->
+    ignore;
+
 %% Pick probe
 handle({trace_ts, Who, 'call',
         {dlstalk, _, [cast, {?PROBE, Probe, _Chain}, _]}, Time}) ->
@@ -210,7 +215,7 @@ handle({trace_ts, _Who, 'receive',
 
 %% Deadlock notification
 handle({trace_ts, _Who, 'receive',
-        {'$gen_cast', {?YOU_DIED, _DL}},
+        {_, {?YOU_DIED, _DL}},
         _Time
        }) ->
     ignore;
@@ -264,7 +269,7 @@ handle({trace_ts, _Who, send,
 
 %% Deadlock notification
 handle({trace_ts, _Who, send,
-        {'$gen_cast', {?YOU_DIED, _DL}}, _To,
+        {_, {?YOU_DIED, _DL}}, _To,
         _Time
        }) ->
     ignore;

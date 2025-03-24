@@ -218,6 +218,8 @@ run_scenario(Scenario, Opts) ->
     case Result of
         ok ->
             logging:log_terminate();
+        {deadlock, Deadlocks} ->
+            logging:log_deadlock(Deadlocks);
         timeout ->
             logging:log_timeout()
     end,
@@ -230,13 +232,17 @@ run_scenario(Scenario, Opts) ->
 
 %% Wait for all sessions to terminate, or timeout
 receive_responses(Reqs0, Time) ->
+    receive_responses(Reqs0, Time, 0).
+receive_responses(Reqs0, Time, Deadlocks) ->
     case gen_statem:receive_response(Reqs0, Time, true) of
-        no_request ->
+        no_request when Deadlocks =:= 0 ->
             ok;
+        no_request ->
+            {deadlock, Deadlocks};
         timeout ->
             timeout;
-        {{reply, _}, _Session, Reqs1} ->
-            receive_responses(Reqs1, Time)
+        {{reply, R}, _Session, Reqs1} ->
+            receive_responses(Reqs1, Time, Deadlocks + case R of {?YOU_DIED, _} -> 1; _ -> 0 end)
     end.
 
 %% Parse scenario together with in-file options
