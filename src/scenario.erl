@@ -29,7 +29,8 @@ fix_session(Map, [A | Session]) when is_atom(A) ->
 fix_session(Map, [Instr | Session]) when is_atom(element(1, Instr)) ->
     {fix_session(Map, Instr), fix_session(Map, Session)};
 fix_session(_Map, {wait, TimeMin, TimeMax}) ->
-    {wait, TimeMin + rand:uniform(TimeMax - TimeMin)};
+    T = TimeMin + rand:uniform(TimeMax + 1 - TimeMin) - 1,
+    {wait, T};
 fix_session(_Map, Session) when is_atom(element(1, Session)) ->
     Session;
 fix_session(Map, Session) when is_tuple(Session) ->
@@ -39,7 +40,16 @@ fix_session(Map, Session) when is_map(Session) ->
     maps:map(fun (_, S) -> fix_session(Map, S) end, Session).
 
 fix_scenario(Map, Scenario) ->
-    [ {SessionId, {element(1, maps:get(Init, Map)), fix_session(Map, Session)}}
+    [ {SessionId,
+       {case Init of
+           _ when is_integer(Init) ->
+               element(1, maps:get(Init, Map));
+            {Wait, I} ->
+                { fix_session(Map, Wait)
+                , element(1, maps:get(I, Map))
+                }
+        end,
+        fix_session(Map, Session)}}
      || {SessionId, {Init, Session}} <- Scenario
     ].
 
@@ -62,7 +72,10 @@ session_size(S) when is_tuple(S) ->
     session_size(tuple_to_list(S)).
 
 scenario_size(Scenario) ->
-    lists:max([0 | [ max(Init, session_size(Session))
+    lists:max([0 | [ case Init of
+                         _ when is_integer(Init) -> max(Init, session_size(Session));
+                         {_, I} when is_integer(I) -> max(I, session_size(Session))
+                     end
                      || {_SessionId, {Init, Session}} <- Scenario
                    ]]).
 
@@ -166,7 +179,16 @@ run_scenario(Scenario, Opts) ->
 
     Folder = fun({_SessionId, []}, ReqIds) -> ReqIds;
                 ({SessionId, {SessionInit, Session}}, ReqIds) ->
-                     R = gen_statem:send_request(SessionInit, {SessionId, Session}),
+                     SessionInitProc =
+                         case SessionInit of
+                             _ when is_integer(SessionInit) orelse is_pid(SessionInit) -> SessionInit;
+                             {{wait, 0}, I} -> I;
+                             {{wait, T}, I} ->
+                                 % TODO this initial waiting has to be programmed better (and definitely not sequential)
+                                 timer:sleep(T),
+                                 I
+                         end,
+                     R = gen_statem:send_request(SessionInitProc, {SessionId, Session}),
                      gen_statem:reqids_add(R, SessionId, ReqIds)
              end,
     Reqs = lists:foldl(Folder, gen_statem:reqids_new(), FScenario),

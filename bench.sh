@@ -1,3 +1,5 @@
+ARG=$1
+
 make
 
 SEED=2137
@@ -24,13 +26,13 @@ run_bench() {
     PDELAY=$3
     TIMEOUT=$4
 
-    [[ $TESTTYPE != bc || $TESTTYPE != ts ]] && echo "Bad test type" && return 1
+    [[ $TESTTYPE != bc && $TESTTYPE != ts ]] && echo "Bad test type ${TESTTYPE}" && return 1
 
     # Backup name
     OUT_FILE="${TESTTYPE}_${TIMESTAMP}.csv"
     OUT_FILE_ARG=$(if [[ $TESTTYPE = ts ]]; then echo -n "csv"; elif [[ $TESTTYPE = bc ]]; then echo -n "stats-csv"; else return 1; fi)
 
-    eval_echo ./dlstalk\
+    time eval_echo ./dlstalk\
               "${TESTFILE}"\
               "--seed=${SEED}"\
               --trace-proc\
@@ -46,13 +48,16 @@ run_bench() {
     eval_echo cp $OUT_FILE $DETNAME
 }
 
-run_bench scenarios/big.conf ts -1 20000
-run_bench scenarios/big.conf ts 500 20000
-run_bench scenarios/big.conf ts 5000 20000
+# This works only because there are two options; execute all if none given.
+if [[ $ARG != bc ]]; then
+    run_bench scenarios/big.conf ts -1 20000
+    run_bench scenarios/big.conf ts 500 20000
+    run_bench scenarios/big.conf ts 5000 20000
+fi
 
-run_bench scenarios/bench.conf bc unmonitored 1000
-run_bench scenarios/bench.conf bc -1 10000
-run_bench scenarios/bench.conf bc 1000 10000
-run_bench scenarios/bench.conf bc 5000 20000
-
-# export PDELAY=5000 && make && ./dlstalk scenarios/bench.conf --seed=2137 --trace-proc "--probe-delay=$PDELAY" "--stats-csv=run_$(date +%d-%m-%Y--%T)_probe-delay_$PDELAY.csv" --silent --timeout=20000
+if [[ $ARG != ts ]]; then
+    run_bench scenarios/bench.conf bc unmonitored 1000
+    run_bench scenarios/bench.conf bc -1 10000
+    run_bench scenarios/bench.conf bc 1000 10000
+    run_bench scenarios/bench.conf bc 5000 20000
+fi

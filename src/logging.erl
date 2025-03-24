@@ -14,6 +14,7 @@
         ]).
 
 -define(LOG_SILENT, '$logging_silent').
+-define(LOG_TIMESTAMP, '$logging_timestamp').
 -define(KNOWN_ETS, '$logging_known').
 -define(FRESH_ETS, '$logging_fresh').
 
@@ -43,6 +44,7 @@ conf(LogConf) ->
         FrRef -> put(?FRESH_ETS, FrRef)
     end,
     put(?LOG_SILENT, proplists:get_value(silent, LogConf)),
+    put(?LOG_TIMESTAMP, proplists:get_value(log_timestamp, LogConf, true)),
     put(?LOG_INDENT_SIZE, proplists:get_value(indent, LogConf, 4)),
     ok.
 
@@ -137,19 +139,34 @@ c_who(Thing) ->
     end.
 
 c_query() ->
-    {blue_l, "query"}.
+    {blue_l, "Q"}.
 
 c_query(Msg) ->
     [c_query(), "(", c_msg(Msg), ")"].
 
 c_reply() ->
-    {green_l, "reply"}.
+    {green_l, "R"}.
 
 c_reply(Msg) ->
     [c_reply(), "(", c_msg(Msg), ")"].
 
 c_probe(Probe) ->
-    {yellow, name(Probe, 'probe_')}.
+    {yellow, name(Probe, 'P')}.
+
+%% c_query() ->
+%%     {blue_l, "query"}.
+
+%% c_query(Msg) ->
+%%     [c_query(), "(", c_msg(Msg), ")"].
+
+%% c_reply() ->
+%%     {green_l, "reply"}.
+
+%% c_reply(Msg) ->
+%%     [c_reply(), "(", c_msg(Msg), ")"].
+
+%% c_probe(Probe) ->
+%%     {yellow, name(Probe, 'probe_')}.
 
 
 c_terminate() ->
@@ -393,7 +410,7 @@ ev_data_csv({release, Pid}) ->
 ev_data_csv(unlocked) ->
     #{data_type=>unlocked};
 ev_data_csv({deadlocked, L}) ->
-    #{data_type=>deadlocked, data=>L};
+    #{data_type=>deadlocked, data=>[index(X) || X <- L]};
 ev_data_csv({locked, On}) ->
     #{data_type=>locked, other=>On}.
 
@@ -443,7 +460,7 @@ trace_csv(InitT, Trace) ->
                        nil -> "";
                        D when is_atom(D); is_integer(D); is_list(D) ->
                            "\"" ++
-                               lists:flatten(string:replace(lists:flatten(io_lib:format("~p", [D])), "\"", "\"\"", all))
+                               lists:flatten(string:replace(lists:flatten(io_lib:format("~w", [D])), "\"", "\"\"", all))
                                ++ "\"";
                        _D -> "msg"
                    end
@@ -472,7 +489,7 @@ c_timestamp(InitT, {T, _TimeIdx}) ->
     end.
 
 c_trace(InitT, Time, Who, What) ->
-    [ c_timestamp(InitT, Time), "\t"
+    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time), "\t"]; _ -> "" end
     , c_by(Who, c_event(What))
     ].
 

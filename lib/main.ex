@@ -8,6 +8,7 @@ defmodule Dlstalk.Main do
     \t--trace-mon\tTrace events in monitored services (default)
     \t--trace-int\tTrace internal events (default)
     \t--live-log\tPrint logs from the tracer instead of retroactively
+    \t--log-timestamp\tInclude time in the printed log
     \t--indent\tHow many tabs should log cells be separated with; 0 means no tabulation (default 4)
     \t--csv\tOutput log file in CSV format
     \t--stats-csv\tOutput stats file in CSV format
@@ -31,6 +32,7 @@ defmodule Dlstalk.Main do
                 trace_mon: :boolean,
                 trace_int: :boolean,
                 live_log: :boolean,
+                log_timestamp: :boolean,
                 help: :boolean,
                 timeout: :integer,
                 indent: :integer,
