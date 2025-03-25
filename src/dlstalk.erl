@@ -339,11 +339,11 @@ deadlocked({call, From}, '$get_child', #deadstate{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
 %% Incoming external call. We just tell them about the deadlock.
-deadlocked({call, _From}, Msg, State = #deadstate{deadlock = DL}) ->
+deadlocked({call, From}, Msg, State = #deadstate{deadlock = DL}) ->
     %% Forward to the process just in case
     gen_server:send_request(State#deadstate.worker, Msg),
     %% gen_statem:reply(element(1, From),k ),
-    {keep_state_and_data, {?YOU_DIED, DL}};
+    {keep_state_and_data, {reply, From, {?YOU_DIED, DL}}};
 
 deadlocked({call, _From}, Msg, State) ->
     %% Forward to the process, who cares

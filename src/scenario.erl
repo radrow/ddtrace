@@ -194,10 +194,16 @@ run_scenario(Scenario, Opts) ->
     Reqs = lists:foldl(Folder, gen_statem:reqids_new(), FScenario),
 
     Result = receive_responses(Reqs, Timeout),
+    timer:sleep(500),
 
     %% Log = [{{1, 1}, self(), {wait, 0}}],
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
 
+    case proplists:get_value(stats_csv, Opts, false) of
+        false -> ok;
+        SLogFile ->
+            file:write_file(SLogFile, [logging:log_stats(Log)])
+    end,
     [begin
          logging:log_trace(InitTime, lists:sort(Log)),
          logging:print_log_stats(Log)
@@ -209,10 +215,10 @@ run_scenario(Scenario, Opts) ->
     case proplists:get_value(csv, Opts, false) of
         false -> ok;
         CsvPath ->
-            io:format("Preparing csv\n"),
+            %% io:format("Preparing csv ~p\n", [CsvPath]),
             Csv = logging:trace_csv(InitTime, lists:sort(Log)),
-            io:format("Done csv\n"),
-            file:write_file(CsvPath, Csv)
+            %% io:format("Done csv\n"),
+            ok = file:write_file(CsvPath, Csv)
     end,
 
     case Result of
@@ -409,12 +415,13 @@ print_grid(Ws, ?GRID_WIDTH) ->
         print_grid(Ws, 0);
 print_grid([{_W, S}|Ws], I) ->
     io_lib:format(" ~s", [case S of
-                              init -> ansi_color:render({[white, bold], "."});
+                              init -> ansi_color:render({[black_l, bold], "."});
                               woke -> ansi_color:render({[yellow, bold, dim], "o"});
                               busy -> ansi_color:render({[yellow_l, bold], "O"});
                               done -> ansi_color:render({[green, bold], "@"});
                               dead -> ansi_color:render({[violet, bold, dim], "#"});
-                              down -> ansi_color:render({[red, blink, bold], "!"})
+                              down -> ansi_color:render({[red, blink, bold], "!"});
+                              time -> ansi_color:render({[blue_l, bold], "T"})
                           end]) ++
         print_grid(Ws, I + 1).
 print_size(Size, MaxSize) ->
@@ -479,10 +486,18 @@ run_many(Bench, Opts) ->
                         Scenario = gen_gen(Type, Size),
                         SOpts = [ {seed, R}
                                 , silent
-                                | proplists:delete(stats_csv, Opts)],
+                                | proplists:delete(stats_csv, proplists:delete(csv, Opts)) % TODO fix formatting
+                                ] ++ case proplists:get_value(csv, Opts) of
+                                         undefined -> [];
+                                         Dir ->
+                                             SDir = if is_binary(Dir) -> binary:bin_to_list(Dir); true -> Dir end,
+                                             CsvName = atom_to_list(Type) ++ "__" ++ integer_to_list(Size) ++ "__" ++ integer_to_list(R) ++ ".csv",
+                                             Path = SDir ++ "/" ++ CsvName,
+                                             [{csv, Path}]
+                                     end,
                         Printer ! {update, self(), 0, busy},
                         {Log, Result} = run_scenario(Scenario, SOpts),
-                        Printer ! {update, self(), -Size, case Result of ok -> done; _ -> dead end},
+                        Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; timeout -> time end},
                         Stats = logging:log_stats(Log),
                         logging:delete(),
                         Self ! {success, Ref, self(), Type, Size, Stats, Result}
@@ -505,11 +520,12 @@ run_many(Bench, Opts) ->
     LogFile = proplists:get_value(stats_csv, Opts, <<"/dev/stdout">>),
     io:format("Writing log to: ~s\n", [LogFile]),
 
-    {ok, Log} = file:open(binary:bin_to_list(LogFile), [append]),
+    {ok, Log} = file:open(binary:bin_to_list(LogFile), [write]),
 
     io:format(Log, "run,time,type,size,total,sent,inits,mon_mon,proc_mon,mon_proc,proc_proc,queries,replies,probes,success,deadlock\n", []),
     [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
-                [I,Time,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,if Result == ok -> 1; true -> 0 end, Deadlocks])
+                [I,Time,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,
+                 case Result of timeout -> 2; {deadlock, _} -> 1; ok -> 0 end, Deadlocks])
       || {I, {Type, Size,
               #{total := Total,
                 sent := Sent,

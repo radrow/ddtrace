@@ -407,16 +407,25 @@ ev_data_csv({query, From, Msg}) ->
     #{data_type=>query, other=>From, data=>Msg};
 ev_data_csv({query, Msg}) ->
     #{data_type=>query, data=>Msg};
+
+ev_data_csv({reply, From, {?YOU_DIED, DL}}) ->
+    #{data_type=>dl_notif, other=>From, data=>[index(X) || X <- DL]};
+ev_data_csv({reply, {?YOU_DIED, DL}}) ->
+    #{data_type=>dl_notif, data=>[index(X) || X <- DL]};
+
 ev_data_csv({reply, From, Msg}) ->
     #{data_type=>reply, other=>From, data=>Msg};
 ev_data_csv({reply, Msg}) ->
     #{data_type=>reply, data=>Msg};
+
 ev_data_csv({proc_query, To, Msg}) ->
     #{data_type=>proc_query, other=>To, data=>Msg};
 ev_data_csv({proc_reply, Msg}) ->
     #{data_type=>proc_reply, data=>Msg};
+
 ev_data_csv({probe, Probe}) ->
     #{data_type=>probe, data=>Probe};
+
 ev_data_csv({release, Pid}) ->
     #{data_type=>release, data=>Pid};
 ev_data_csv(unlocked) ->

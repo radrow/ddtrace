@@ -3,7 +3,24 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import matplotlib as mpl
+
+DELAY_COLOR = {
+    5000: 'green',
+    1000: 'orange',
+    500: 'lightsalmon',
+    0: 'red',
+    -1: 'red',
+    'unmonitored': 'blue',
+}
+
+def delay_label(d):
+    if d == 'unmonitored':
+        return 'Unmonitored'
+    else:
+        if d == -1:
+            d = 0
+        return f"Probe delay = {d}ms"
+
 
 def plot_deadlocks(data, plot=plt):
     column = 'deadlock'
@@ -31,11 +48,15 @@ def bench_file(filepath, column="sent", name="", color="red", label=None, plot=p
 
 def bench(column, label=None, show=False, plot=plt):
     plt.figure(figsize=(7, 10), dpi=600)
-    bench_file("bc_5000.csv", name="delayed (5s)", color="green", column=column, label="Probe delay = 5000ms", plot=plot)
-    bench_file("bc_1000.csv", name="delayed (1s)", color="gold", column=column, label="Probe delay = 1000ms", plot=plot)
-    bench_file("bc_500.csv", name="delayed (5s)", color="orange", column=column, label="Probe delay = 500ms", plot=plot)
-    bench_file("bc_-1.csv", name="eager", color="red", column=column, label="Probe delay = 0", plot=plot)
-    bench_file("bc_unmonitored.csv", name="unmonitored", color="blue", column=column, label="Unmonitored", plot=plot)
+
+    def do_plot(d):
+        bench_file(f"bc_{d}.csv", color=DELAY_COLOR[d], column=column, label=delay_label(d), plot=plot)
+
+    do_plot(5000)
+    do_plot(1000)
+    # do_plot(500)
+    do_plot(-1)
+    do_plot('unmonitored')
 
     # Labels and legend
     # plt.xlabel("Number of services")
@@ -51,8 +72,13 @@ def bench(column, label=None, show=False, plot=plt):
         plt.close()
 
 def hack_bench_legend():
-    colors = ["green", "gold", "orange", "red", "blue"]
-    labels = ["Probe delay = 5000ms", "Probe delay = 1000ms", "Probe delay = 500ms", "Probe delay = 0ms", "Unmonitored"]
+    delays = [5000,
+              1000,
+              # 500,
+              -1,
+              'unmonitored']
+    colors = [DELAY_COLOR[d] for d in delays]
+    labels = [delay_label(d) for d in delays]
     f = lambda m,c: plt.plot([],[],marker=m, color=c, ls="none")[0]
     handles = [f("s", colors[i]) for i in range(len(colors))]
     legend = plt.legend(handles, labels, loc=3, framealpha=1, frameon=False)
@@ -76,7 +102,8 @@ def bench_bar(filepath, **kwargs):
         plt.bar([0], [sums[l] / sums['sent']], label=l, bottom=bottom)
         bottom += sums[l]
 
-def plot_data_type(data, val, min_range_ms=1300, max_range_ms=13000, **kwargs):
+def plot_data_type(data, val, range_ms=(None, None), **kwargs):
+    (min_range_ms, max_range_ms) = range_ms
     cumcol = 'cum' + val
     data[cumcol] = ((data.data_type == val)  # Select message class
                     * (data.event_type == 'send')  # Only sent
@@ -84,43 +111,57 @@ def plot_data_type(data, val, min_range_ms=1300, max_range_ms=13000, **kwargs):
                     ) + 0
     data[cumcol] = data[cumcol].cumsum()
     data = data[['timestamp', cumcol]]
-    data = data[data.timestamp <= max_range_ms]
-    if data.loc[len(data) - 1]['timestamp'] < min_range_ms:
+
+    if max_range_ms:
+        data = data[data.timestamp <= max_range_ms]
+
+    if min_range_ms and data.loc[len(data) - 1]['timestamp'] < min_range_ms:
         align_row = pd.DataFrame([[min_range_ms,data.loc[len(data) - 1][cumcol]]], columns=data.columns)
         data = pd.concat([data, align_row], ignore_index=True)
+
     plt.plot(data['timestamp'], data[cumcol], **kwargs)
 
 
 def plot_states(data, state):
-    for t in data[data.data_type == state]['timestamp']:
-        plt.plot(t, data.loc[(data.timestamp - t).abs().idxmin()]['cumprobe'], 'rx', markersize=14)
-        # plt.axvline(x=t, color='red', linestyle='--')
+    data = data[data.data_type == state]
+    if len(data) > 0:
+        data = data[data['timestamp'] == data['timestamp'].min()]
+        plt.axvline(x=data.iloc[0].timestamp, color='red', linestyle='--')
+
+    # for t in data[data.data_type == state]['timestamp']:
+    #     # plt.plot(t, data.loc[(data.timestamp - t).abs().idxmin()]['cumprobe'], 'rx', markersize=14)
+    #     plt.axvline(x=t, color='red', linestyle='--')
 
 
 def ms_formatter(x, pos=None):
     return x.strftime('%H:%M:%S.') + f"{x.microsecond // 1000:03d}"
 
 
-def timeseries(filepath, label=None, pcolor='orange', show=False):
-    plt.figure(figsize=(10, 2), dpi=600)
+def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None, None), figsize=None):
+    if figsize is not None:
+        plt.figure(figsize=figsize, dpi=600)
     data = pd.read_csv(filepath, keep_default_na=False, comment="#")
     data['timestamp'] //= 1000  # To milliseconds
     # data['timestamp'] = pd.to_datetime(data['timestamp'], unit='us')
 
-    plot_data_type(data, 'reply', label="Responses", color="cyan")
-    plot_data_type(data, 'query', label="Queries", color="blue")
-    plot_data_type(data, 'probe', label="Probes", color=pcolor)
+    # plt.gca().set_yscale('log')
+    plt.gca().xaxis.set_major_formatter(mticker.FormatStrFormatter("%dms"))
+    # plt.xticks(rotation=25)
+
+    plot_data_type(data, 'reply', label="Responses", color="cyan", range_ms=range_ms)
+    plot_data_type(data, 'query', label="Queries", color="blue", range_ms=range_ms)
+    plot_data_type(data, 'probe', label="Probes", color=pcolor, range_ms=range_ms)
     plot_states(data, 'deadlocked')
 
     # Labels and formatting
     # plt.xlabel('Timestamp')
     # plt.ylabel('Number of messages')
     # plt.title(label)
-    plt.xticks(rotation=25)
-    plt.gca().xaxis.set_major_formatter(mticker.FormatStrFormatter("%d ms"))
     # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 
     plt.grid(axis='both', which='major')
+
+    plt.gca().set_ylim([0, 16000])
 
     if show:
         plt.show()
@@ -136,10 +177,18 @@ def gen_plots():
     bench('service', "queries and replies sent")
     hack_bench_legend()
 
-    timeseries("ts_-1.csv", label="No probe delay; 20k services", pcolor='red')
-    timeseries("ts_500.csv", label="Probe delay = 500ms; 20k services", pcolor='orange')
-    timeseries("ts_1000.csv", label="Probe delay = 1000ms; 20k services", pcolor='gold')
-    timeseries("ts_5000.csv", label="Probe delay = 5000ms; 20k services", pcolor='green')
+    def do_ts(d):
+        range_ms = (5300, 5300) if d == 5000 else (1200, 1200)
+        figsize = (30, 2) if d == 5000 else (6, 2)
+
+        range_ms = (None, None)
+        figsize = (4, 3)
+        timeseries(f"ts_{d}.csv", pcolor=DELAY_COLOR[d], range_ms=range_ms, figsize=figsize)
+
+    do_ts(5000)
+    do_ts(1000)
+    do_ts(500)
+    do_ts(-1)
 
 
 def main():
