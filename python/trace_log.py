@@ -1,3 +1,4 @@
+import numpy as np
 import argparse
 from pathlib import Path
 import pandas as pd
@@ -5,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
 DELAY_COLOR = {
-    5000: 'green',
+    5000: 'limegreen',
     1000: 'orange',
     500: 'lightsalmon',
     0: 'red',
@@ -28,7 +29,7 @@ def plot_deadlocks(data, plot=plt):
     # data = data[['size', column]].groupby('size', as_index=False).mean()
 
     # plt.fill_between(data['size'], data['mean'] - data['std'], data['mean'] + data['std'], color='gray', alpha=0.05)
-    plt.plot(data['size'], data['mean'] * 1000, color='gray', linestyle='--')
+    # plt.plot(data['size'], data['mean'] * 1000, color='gray', linestyle='--')
 
 def bench_file(filepath, column="sent", name="", color="red", label=None, plot=plt):
     data = pd.read_csv(filepath, keep_default_na=False, comment="#")
@@ -43,7 +44,7 @@ def bench_file(filepath, column="sent", name="", color="red", label=None, plot=p
     # data = data[['size', column]].groupby('size', as_index=False).mean()
 
     plt.fill_between(data['size'], data['mean'] - data['std'], data['mean'] + data['std'], color=color, alpha=0.1)
-    plt.plot(data['size'], data['mean'], label=label, color=color)
+    plt.plot(data['size'], data['mean'], label=label, color=color, linewidth=2)
     # plt.axhline(data['mean'].max(), color=color, linestyle="--", alpha=0.5, label=f"Max average = {data['mean'].max()} (at {data.loc[data['mean'].idxmax(), 'size']} processes)")
 
 def bench(column, label=None, show=False, plot=plt):
@@ -58,12 +59,24 @@ def bench(column, label=None, show=False, plot=plt):
     do_plot(-1)
     do_plot('unmonitored')
 
-    # Labels and legend
-    # plt.xlabel("Number of services")
-    # plt.ylabel(f"Average {label}")
-    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    if column == 'site':
+        # plt.xlabel('Number of services')
+        # plt.ylabel('Number of messages')
+        # plt.title(label)
+        plt.legend(loc='upper left', bbox_to_anchor=(0, 1), fontsize=19)
+
+    range_x = 11000
+    step = 1000 if range_x < 5000 else 2000
+    range_x += step // 4
+
+    major_ticks = np.arange(0, range_x + 1, step)
+    minor_ticks = np.arange(0, range_x + 1, step // 2)
+    plt.gca().set_xticks(major_ticks)
+    plt.gca().set_xticks(minor_ticks, minor=True)
 
     plt.grid(axis='both', which='major')
+    plt.xticks(fontsize=19)
+    plt.yticks(fontsize=19)
 
     if show:
         plt.show()
@@ -119,7 +132,7 @@ def plot_data_type(data, val, range_ms=(None, None), **kwargs):
         align_row = pd.DataFrame([[min_range_ms,data.loc[len(data) - 1][cumcol]]], columns=data.columns)
         data = pd.concat([data, align_row], ignore_index=True)
 
-    plt.plot(data['timestamp'], data[cumcol], **kwargs)
+    plt.plot(data['timestamp'], data[cumcol], linewidth=3, **kwargs)
 
 
 def plot_states(data, state):
@@ -142,26 +155,42 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
         plt.figure(figsize=figsize, dpi=600)
     data = pd.read_csv(filepath, keep_default_na=False, comment="#")
     data['timestamp'] //= 1000  # To milliseconds
-    # data['timestamp'] = pd.to_datetime(data['timestamp'], unit='us')
+    # data['timestamp'] = pd.to_datetime(data['timestamp'], unit='s')
 
-    # plt.gca().set_yscale('log')
     plt.gca().xaxis.set_major_formatter(mticker.FormatStrFormatter("%dms"))
     # plt.xticks(rotation=25)
 
-    plot_data_type(data, 'reply', label="Responses", color="cyan", range_ms=range_ms)
+    plot_states(data, 'deadlocked')
+    plot_data_type(data, 'reply', label="Responses", color="turquoise", range_ms=range_ms)
     plot_data_type(data, 'query', label="Queries", color="blue", range_ms=range_ms)
     plot_data_type(data, 'probe', label="Probes", color=pcolor, range_ms=range_ms)
-    plot_states(data, 'deadlocked')
 
-    # Labels and formatting
-    # plt.xlabel('Timestamp')
-    # plt.ylabel('Number of messages')
-    # plt.title(label)
-    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    range_x = data['timestamp'].max()
+    step = 1000 if range_x < 5000 else 2000
+    range_x += step // 4
+
+    major_ticks = np.arange(0, range_x + 1, step)
+    minor_ticks = np.arange(0, range_x + 1, step // 2)
+    plt.gca().set_xticks(major_ticks)
+    plt.gca().set_xticks(minor_ticks, minor=True)
 
     plt.grid(axis='both', which='major')
+    plt.xticks(fontsize=19)
+    plt.yticks(fontsize=19)
 
-    plt.gca().set_ylim([0, 16000])
+    if filepath == 'ts_-1.csv' or  filepath == 'ts_1000.csv' :
+        # plt.xlabel('Timestamp')
+        # plt.ylabel('Number of messages')
+        # plt.title(label)
+        plt.legend(loc='lower right', bbox_to_anchor=(1, 0), fontsize=19)
+
+    if filepath == 'ts_5000.csv':
+        # plt.xlabel('Timestamp')
+        # plt.ylabel('Number of messages')
+        # plt.title(label)
+        plt.legend(loc='lower right', bbox_to_anchor=(0.95, 0.1), fontsize=19)
+
+    plt.gca().set_ylim([0, 11500])
 
     if show:
         plt.show()
@@ -175,14 +204,14 @@ def gen_plots():
     bench('sent', "all messages sent")
     bench('probes', "probes sent")
     bench('service', "queries and replies sent")
-    hack_bench_legend()
+    # hack_bench_legend()
 
     def do_ts(d):
         range_ms = (5300, 5300) if d == 5000 else (1200, 1200)
         figsize = (30, 2) if d == 5000 else (6, 2)
 
         range_ms = (None, None)
-        figsize = (4, 3)
+        figsize = (7, 10)
         timeseries(f"ts_{d}.csv", pcolor=DELAY_COLOR[d], range_ms=range_ms, figsize=figsize)
 
     do_ts(5000)
