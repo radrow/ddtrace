@@ -248,6 +248,8 @@ c_state(unlocked) ->
     {[green, bold, invert], " UNLOCK "};
 c_state({locked, On}) ->
     [{[red_l, bold, invert], " LOCK "}, " (", c_probe(On), ")"];
+c_state({deadlocked, foreign}) ->
+    {[red, bold, underline, dim], "foreign deadlock"};
 c_state({deadlocked, [First|DL]}) ->
     [ {[red, bold, underline, invert], "### DEADLOCK ###\t"}
     , "("

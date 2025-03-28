@@ -20,7 +20,7 @@
 
 %% Internal state queries
 -export([ state_get_worker/1, state_get_req_tag/1, state_get_req_id/1, state_get_waitees/1
-        , deadstate_get_worker/1, deadstate_get_deadlock/1
+        , deadstate_get_worker/1, deadstate_get_deadlock/1, deadstate_is_foreign/1
         ]).
 
 %%%======================
@@ -34,7 +34,8 @@
               }).
 -record(deadstate,{worker :: pid(),
                    deadlock :: list(pid()),
-                   req_id :: gen_statem:request_id()
+                   req_id :: gen_statem:request_id(),
+                   foreign = false :: boolean()
                   }).
 
 state_get_worker(#state{worker = Worker}) ->
@@ -56,6 +57,9 @@ deadstate_get_worker(State) ->
 
 deadstate_get_deadlock(State) ->
     State#deadstate.deadlock.
+
+deadstate_is_foreign(State) ->
+    State#deadstate.foreign.
 
 %%%======================
 %%% API Functions
@@ -287,7 +291,7 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
               end
               || {_, W} <- gen_statem:reqids_to_list(Waitees)
             ],
-            {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
+            {next_state, deadlocked, #deadstate{foreign = true, worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
 
         {reply, Reply} ->
             %% Pass the reply to the process. We are unlocked now.

@@ -115,7 +115,13 @@ handle({trace_ts, Who, 'call',
         locked ->
             {Time, Who, {state, {locked, dlstalk:state_get_req_tag(Internal)}}};
         deadlocked ->
-            {Time, Who, {state, {deadlocked, dlstalk:deadstate_get_deadlock(Internal)}}}
+            {Time, Who, {state, {deadlocked,
+                                 case dlstalk:deadstate_is_foreign(Internal) of
+                                     true -> foreign;
+                                     false ->
+                                         dlstalk:deadstate_get_deadlock(Internal)
+                                 end}}
+             }
     end;
 
 %% Pick query

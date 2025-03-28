@@ -48,15 +48,15 @@ def bench_file(filepath, column="sent", name="", color="red", label=None, plot=p
     # plt.axhline(data['mean'].max(), color=color, linestyle="--", alpha=0.5, label=f"Max average = {data['mean'].max()} (at {data.loc[data['mean'].idxmax(), 'size']} processes)")
 
 def bench(column, label=None, show=False, plot=plt):
-    plt.figure(figsize=(7, 10), dpi=600)
+    plt.figure(figsize=(7, 5), dpi=600)
 
     def do_plot(d):
         bench_file(f"bc_{d}.csv", color=DELAY_COLOR[d], column=column, label=delay_label(d), plot=plot)
 
-    do_plot(5000)
-    do_plot(1000)
-    # do_plot(500)
     do_plot(-1)
+    # do_plot(500)
+    do_plot(1000)
+    do_plot(5000)
     do_plot('unmonitored')
 
     if column == 'site':
@@ -161,13 +161,13 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
     # plt.xticks(rotation=25)
 
     plot_states(data, 'deadlocked')
-    plot_data_type(data, 'reply', label="Responses", color="turquoise", range_ms=range_ms)
-    plot_data_type(data, 'query', label="Queries", color="blue", range_ms=range_ms)
+    plot_data_type(data, 'query', label="Queries", color="blue", range_ms=range_ms, linestyle=':')
+    plot_data_type(data, 'reply', label="Responses", color="turquoise", range_ms=range_ms,  linestyle='--')
     plot_data_type(data, 'probe', label="Probes", color=pcolor, range_ms=range_ms)
 
     range_x = data['timestamp'].max()
     step = 1000 if range_x < 5000 else 2000
-    range_x += step // 4
+    range_x = step * 4 + step // 4
 
     major_ticks = np.arange(0, range_x + 1, step)
     minor_ticks = np.arange(0, range_x + 1, step // 2)
@@ -178,7 +178,7 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
     plt.xticks(fontsize=19)
     plt.yticks(fontsize=19)
 
-    if filepath == 'ts_-1.csv' or  filepath == 'ts_1000.csv' :
+    if filepath == 'ts_-1.csv' or filepath == 'ts_1000.csv' :
         # plt.xlabel('Timestamp')
         # plt.ylabel('Number of messages')
         # plt.title(label)
@@ -207,11 +207,11 @@ def gen_plots():
     # hack_bench_legend()
 
     def do_ts(d):
-        range_ms = (5300, 5300) if d == 5000 else (1200, 1200)
+        range_ms = (8000, 8000) if d == 5000 else (4000, 4000)
         figsize = (30, 2) if d == 5000 else (6, 2)
 
-        range_ms = (None, None)
-        figsize = (7, 10)
+        # range_ms = (None, None)
+        figsize = (7, 5)
         timeseries(f"ts_{d}.csv", pcolor=DELAY_COLOR[d], range_ms=range_ms, figsize=figsize)
 
     do_ts(5000)
