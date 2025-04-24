@@ -9,7 +9,7 @@
 -export([start/3, start_link/3]).
 
 %% gen_server interface
--export([call/2, call/3, cast/2, stop/2, stop/3]).
+-export([call/2, call/3, cast/2, stop/3]).
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
@@ -104,9 +104,6 @@ cast(Server, Message) ->
 
 stop(Server, Reason, Timeout) ->
     gen_server:stop(Server, Reason, Timeout).
-
-stop(Server, Reason) ->
-    gen_server:stop(Server, Reason).
 
 %%%======================
 %%% gen_statem Callbacks

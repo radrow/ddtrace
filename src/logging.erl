@@ -432,6 +432,8 @@ ev_data_csv({release, Pid}) ->
     #{data_type=>release, data=>Pid};
 ev_data_csv(unlocked) ->
     #{data_type=>unlocked};
+ev_data_csv({deadlocked, foreign}) ->
+    #{data_type=>deadlocked, data=>foreign};
 ev_data_csv({deadlocked, L}) ->
     #{data_type=>deadlocked, data=>[index(X) || X <- L]};
 ev_data_csv({locked, On}) ->
