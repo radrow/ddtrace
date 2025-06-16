@@ -6,6 +6,7 @@ erl_crash.dump
 .concrete/DEV_MODE
 rebar.lock
 
+output
 ddmon
 
 # rebar 2.x

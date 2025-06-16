@@ -51,7 +51,7 @@ def bench(column, label=None, show=False, plot=plt):
     plt.figure(figsize=(7, 5), dpi=600)
 
     def do_plot(d):
-        bench_file(f"bc_{d}.csv", color=DELAY_COLOR[d], column=column, label=delay_label(d), plot=plot)
+        bench_file(f"output/last/bc_p{d}.csv", color=DELAY_COLOR[d], column=column, label=delay_label(d), plot=plot)
 
     do_plot(-1)
     # do_plot(500)
@@ -180,13 +180,13 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
     plt.xticks(fontsize=19)
     plt.yticks(fontsize=19)
 
-    if filepath == 'ts_-1.csv' or filepath == 'ts_1000.csv' :
+    if 'ts_-1.csv' in filepath or 'ts_1000.csv' in filepath:
         # plt.xlabel('Timestamp')
         # plt.ylabel('Number of messages')
         # plt.title(label)
         plt.legend(loc='lower right', bbox_to_anchor=(1, 0), fontsize=19)
 
-    if filepath == 'ts_5000.csv':
+    if 'ts_5000.csv' in filepath:
         # plt.xlabel('Timestamp')
         # plt.ylabel('Number of messages')
         # plt.title(label)
@@ -216,11 +216,11 @@ def gen_plots():
 
         # range_ms = (None, None)
         figsize = (7, 5)
-        timeseries(f"ts_{d}.csv", pcolor=DELAY_COLOR[d], range_ms=range_ms, figsize=figsize)
+        timeseries(f"output/last/ts_p{d}.csv", pcolor=DELAY_COLOR[d], range_ms=range_ms, figsize=figsize)
 
     do_ts(5000)
     do_ts(1000)
-    do_ts(500)
+    # do_ts(500)
     do_ts(-1)
 
 
