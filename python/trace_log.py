@@ -81,7 +81,9 @@ def bench(column, label=None, show=False, plot=plt):
     if show:
         plt.show()
     else:
-        plt.savefig(f"benchmark_{column}.pdf", dpi=600, bbox_inches="tight")
+        outfile = f"benchmark_{column}.pdf"
+        print("Bench output: ", outfile)
+        plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
 
 def hack_bench_legend():
@@ -195,7 +197,9 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
     if show:
         plt.show()
     else:
-        plt.savefig(Path(filepath).with_suffix(".pdf"), dpi=600, bbox_inches="tight")
+        outfile = Path(filepath).with_suffix(".pdf")
+        print("Timeseries output: ", outfile)
+        plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
 
 
