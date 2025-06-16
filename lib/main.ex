@@ -1,4 +1,4 @@
-defmodule Dlstalk.Main do
+defmodule Ddmon.Main do
   defp usage() do
     """
     Usage: #{Path.basename(__ENV__.file)} FILE [OPTIONS]

@@ -1,4 +1,4 @@
-# Dlstalk demo
+# Ddmon demo
 
 ## Usage
 
@@ -34,7 +34,7 @@ make
 Run:
 
 ```
-./dlstalk SCENARIO_FILE [OPTIONS]
+./ddmon SCENARIO_FILE [OPTIONS]
 ```
 
 ### Scenario file format
@@ -127,5 +127,5 @@ session `left` blocks `0` until `1` is unblocked, implying a deadlock.
 
 ### Options
 
-See `./dlstalk --help` for details. Prefix options with `no-` to disable them,
+See `./ddmon --help` for details. Prefix options with `no-` to disable them,
 eg. `--no-trace-mon`.

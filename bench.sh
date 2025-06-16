@@ -34,7 +34,7 @@ run_bench() {
     LOGS_DIR="${TEST_TYPE}_${TIMESTAMP}_${PDELAY}_${TIMEOUT}"
     mkdir -p "${LOGS_DIR}"
 
-    time eval_echo ./dlstalk\
+    time eval_echo ./ddmon\
               "${TEST_FILE}"\
               "--seed=${SEED}"\
               --trace-proc\

@@ -1,6 +1,6 @@
-defmodule Dlstalk.TestServer do
+defmodule Ddmon.TestServer do
   use GenServer
-  alias :dlstalk, as: GenServer  # Comment this line to switch off monitoring
+  alias :ddmon, as: GenServer  # Comment this line to switch off monitoring
 
   def start_link(id, kind, opts) do
     GenServer.start_link(__MODULE__, {id, kind, opts}, opts)

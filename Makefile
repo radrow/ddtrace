@@ -14,7 +14,7 @@ clean:
 
 .PHONY: cleanall
 cleanall: clean
-	rm -f ./dlstalk
+	rm -f ./ddmon
 	rm -rf ./_build
 	rm -rf ./deps
 

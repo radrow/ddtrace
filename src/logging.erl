@@ -1,6 +1,6 @@
 -module(logging).
 
--include("dlstalk.hrl").
+-include("ddmon.hrl").
 
 -export([conf/1, mk_ets/0, delete/0, remember/2, remember/3]).
 
@@ -127,6 +127,11 @@ c_mon(Mon, SubId) ->
 c_init(Pid) when is_pid(Pid) ->
     {[blue, bold, invert], name(Pid)}.
 
+c_who({global, Term}) ->
+    case global:whereis_name(Term) of
+        undefined -> c_thing(Term);
+        Pid -> c_who(Pid)
+    end;
 c_who(Thing) ->
     case type(Thing) of
         'M' -> c_mon(Thing);
