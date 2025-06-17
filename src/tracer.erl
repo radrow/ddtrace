@@ -151,7 +151,7 @@ handle({trace_ts, Who, 'call',
 
 %% Pick deadlock notification
 handle({trace_ts, _Who, 'call',
-        {ddmon, _, [info, {_, {?YOU_DIED, _}}, _]}, _Time}) ->
+        {ddmon, _, [info, {_, {?DEADLOCK, _}}, _]}, _Time}) ->
     ignore;
 
 %% Pick probe
@@ -221,7 +221,7 @@ handle({trace_ts, _Who, 'receive',
 
 %% Deadlock notification
 handle({trace_ts, _Who, 'receive',
-        {_, {?YOU_DIED, _DL}},
+        {_, {?DEADLOCK, _DL}},
         _Time
        }) ->
     ignore;
@@ -275,7 +275,7 @@ handle({trace_ts, _Who, send,
 
 %% Deadlock notification
 handle({trace_ts, _Who, send,
-        {_, {?YOU_DIED, _DL}}, _To,
+        {_, {?DEADLOCK, _DL}}, _To,
         _Time
        }) ->
     ignore;

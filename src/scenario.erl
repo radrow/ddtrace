@@ -248,7 +248,7 @@ receive_responses(Reqs0, Time, Deadlocks) ->
         timeout ->
             timeout;
         {{reply, R}, _Session, Reqs1} ->
-            receive_responses(Reqs1, Time, Deadlocks + case R of {?YOU_DIED, _} -> 1; _ -> 0 end)
+            receive_responses(Reqs1, Time, Deadlocks + case R of {?DEADLOCK, _} -> 1; _ -> 0 end)
     end.
 
 %% Parse scenario together with in-file options
@@ -418,7 +418,7 @@ print_legend() ->
           || Blob <- [init, woke, busy, done, dead, down, time]
         ],
     S = string:join(Legend, ansi_color:render({bold, " | "})),
-    io:format("~s ~s\n", [ansi_color:render({bold, "Legend:"}), S]).
+    io:format("~s ~s\n", [ansi_color:render({bold, "Experiment status legend:\n"}), S]).
 
 blob_format(Blob) ->
     case Blob of

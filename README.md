@@ -1,14 +1,12 @@
-# Ddmon demo
+# DDMon
 
-## Usage
-
-Requirements:
+## Prerequisites
 
 - non-ancient OTP/Erlang, ideally `26`
 - non-ancient Elixir, ideally `1.14`
+- Python 3 with numpy, pandas and matplotlib (for plotting benchmark results)
 
-
-### Build prerequisites (optional, Linux/Unix/Mac only)
+### Build prerequisites (Linux/Unix/Mac only)
 
 First, make sure your system has all dependencies for
 [Erlang](https://github.com/asdf-vm/asdf-erlang) and
@@ -23,26 +21,119 @@ If you do not have `asdf` in your system, everything should be installed in the
 currently visited directory.
 
 
+## OOPSLA benchmark reproduction
+
+To reproduce the results from the paper (*Figures 15* and *16*), simply run the
+`./bench.sh` script without parameters (UNIX). Alternatively, you can use
+`docker`:
+
+```bash
+mkdir -p output
+docker build -t ddmon .
+docker run --rm -v "$(pwd)/output:/app/output" ddmon
+```
+
+The scripts take time to execute all experiments --- on our machines it takes
+around an hour to run the full benchmark. The plots shall be found in the
+`output` directory as PDF files named accordingly to the figures they represent,
+e.g. `output/fig_15_a.pdf` for *Figure 15a*.
+
+Note that the produced plots may look differently than what is in the paper.
+This is an inevitable consequence of the non-deterministic nature of distributed
+systems, which are subject to data races. Different variants of *Figure 16* might
+be previewed by running
+
+
+```bash
+python python/trace_log.py -t output/$DIR/ts_p$DELAY/$FILE.csv
+```
+
+Where `$DIR` is the timestamp of the experiment, `$DELAY` is the probe delay
+setting (`-1` for no delay) and `$FILE` is any file in that directory. For
+example (probe delay set to 5000ms):
+
+```bash
+python python/trace_log.py -t output/17-06-2025--12:54:05/ts_p5000/conditional__1000__19150746.csv
+```
+
+## `ddmon` as library
+
+`ddmon` serves as a drop-in replacement for generic servers. It is applied by
+replacing all references to `gen_server` or `GenServer` modules with `ddmon`. An
+example can be found in `lib/test_server.ex`, where this is achieved in a single
+line via an `alias`:
+
+```elixir
+defmodule Ddmon.TestServer do
+  use GenServer
+  alias :ddmon, as: GenServer  # Comment this line to switch off monitoring
+```
+
+Once every generic server in the system is modified this way, the system is
+monitored. Deadlocks will be signaled by responses of form
+`{'$ddmon_deadlock_spread', L}` where `L` is a list of mutually dependent
+processes involved in a deadlock.
+
+### Limitations
+
+The tool supports only standard features of generic servers, i.e. the `call` and
+`cast` callbacks. Timeouts, deferred responses (`no_reply`) and pooled calls
+through `reqids` are not covered by the prototype.
+
+## Running experiments and testing
+
+`ddmon` comes with a testing platform that allows simulating scenarios of nested
+RPC sessions. After each run, an elaborate and readable log is produced. This is
+especially useful in replicating and analysing known deadlocks, as well as
+investigating potential data races on which said deadlocks depend.
+
 ### Build and run
 
 Build:
 
-```
+```bash
 make
 ```
 
 Run:
 
-```
+```bash
 ./ddmon SCENARIO_FILE [OPTIONS]
+```
+
+Run `./ddmon --help` for details on option. Prefix options with `no-` to disable
+them, eg. `--no-trace-mon`.
+
+#### Examples
+
+The following executes the scenario pictured in *Figure 7* and discussed in
+*Appendix A.1* (*Listings 1* and *2*). Note that due to development of the tool,
+the format of the log may differ slightly in formatting. Moreover, since the
+deadlock is contingent on data races, it might take a few retries to reproduce
+it.
+
+```bash
+./ddmon scenarios/envelope.conf
+```
+
+The log from *Figure 19* has been obtained from the following:
+
+```bash
+./ddmon scenarios/envelope-small.conf
 ```
 
 ### Scenario file format
 
-Erlang conf file with following entries:
+
+A scenario is specified as an Erlang `conf` file that schedules communication
+between services in an experiment. Each scenario describes a number of parallel
+sessions of RPC calls that result in calls to further services, potentially
+provoking deadlocks. See *Appendix A.1* of the paper for additional information.
+
+The file roughly follows the following format.
 
 ```erlang
-%%% File entries
+%%% The scenario file is consists of a number of entries.
 -type config() :: list(entry()).
 
 %%% Top level configuration. For scenario, see below. For all others, see command line options.
@@ -124,8 +215,3 @@ enough for `left` to terminate, `1` will not be blocked and everything will
 resolve by `0` replying to `1`, `1` to `2`, `2` to `3` and `3` finishing the
 session. If `2` does not wait, it may block `1` expecting a reply from `0` while
 session `left` blocks `0` until `1` is unblocked, implying a deadlock.
-
-### Options
-
-See `./ddmon --help` for details. Prefix options with `no-` to disable them,
-eg. `--no-trace-mon`.

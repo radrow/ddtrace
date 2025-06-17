@@ -155,7 +155,7 @@ unlocked({call, From}, '$get_child', #state{worker = Worker}) ->
 unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker, waitees = Waitees})
   when Server =:= Worker orelse Server =:= self() ->
     [ begin
-          gen_statem:reply(W, {?YOU_DIED, [self(), self()]})
+          gen_statem:reply(W, {?DEADLOCK, [self(), self()]})
       end
       || {_, W} <- gen_statem:reqids_to_list(Waitees)
     ],
@@ -281,10 +281,10 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
             Worker ! Msg,
             keep_state_and_data;
 
-        {reply, {?YOU_DIED, DL}} ->
+        {reply, {?DEADLOCK, DL}} ->
             %% Deadlock information
             [ begin
-                  gen_statem:reply(W, {?YOU_DIED, [self() | DL]})
+                  gen_statem:reply(W, {?DEADLOCK, [self() | DL]})
               end
               || {_, W} <- gen_statem:reqids_to_list(Waitees)
             ],
@@ -301,7 +301,7 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
 %% Incoming own probe. Alarm! Panic!
 locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
     [ begin
-          gen_statem:reply(W, {?YOU_DIED, [self() | Chain]})
+          gen_statem:reply(W, {?DEADLOCK, [self() | Chain]})
       end
       || {_, W} <- gen_statem:reqids_to_list(Waitees)
     ],
@@ -344,7 +344,7 @@ deadlocked({call, From}, Msg, State = #deadstate{deadlock = DL}) ->
     %% Forward to the process just in case
     gen_server:send_request(State#deadstate.worker, Msg),
     %% gen_statem:reply(element(1, From),k ),
-    {keep_state_and_data, {reply, From, {?YOU_DIED, DL}}};
+    {keep_state_and_data, {reply, From, {?DEADLOCK, DL}}};
 
 deadlocked({call, _From}, Msg, State) ->
     %% Forward to the process, who cares
@@ -379,7 +379,7 @@ deadlocked(info, Msg, #deadstate{worker = Worker, req_id = ReqId}) ->
             %% Forward to the process, who cares
             Worker ! Msg,
             keep_state_and_data;
-        {reply, {?YOU_DIED, _}} ->
+        {reply, {?DEADLOCK, _}} ->
             keep_state_and_data;
         {reply, Reply} ->
             %% A reply after deadlock?!
