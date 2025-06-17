@@ -81,7 +81,7 @@ def bench(column, label=None, show=False, plot=plt):
     if show:
         plt.show()
     else:
-        outfile = f"benchmark_{column}.pdf"
+        outfile = f"output/last/bc_{column}.pdf"
         print("Bench output: ", outfile)
         plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
@@ -207,7 +207,7 @@ def gen_plots():
     bench('site', "messages sent between services")
     bench('sent', "all messages sent")
     bench('probes', "probes sent")
-    bench('service', "queries and replies sent")
+    # bench('service', "queries and replies sent")
     # hack_bench_legend()
 
     def do_ts(d):
