@@ -37,11 +37,17 @@ COPY . .
 # Precompile deps and build escript
 RUN . $ASDF_DIR/asdf.sh && make
 
+RUN echo "#!/bin/bash" > /usr/bin/asdf-run \
+    && echo "source /opt/asdf/asdf.sh" >> /usr/bin/asdf-run \
+    && echo 'exec "$@"'  >> /usr/bin/asdf-run \
+    && chmod +x /usr/bin/asdf-run
+
+RUN echo ". /opt/asdf/asdf.sh" >> $HOME/.bashrc
+
 # Create output directory
 RUN mkdir -p output
 VOLUME ["output"]
 
 ENV TERM=xterm
 
-# Run the escript to generate CSVs
-ENTRYPOINT ["/bin/sh", "-c", ". /opt/asdf/asdf.sh && ./bench.sh"]
+ENTRYPOINT ["/usr/bin/asdf-run"]
