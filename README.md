@@ -1,24 +1,32 @@
 # DDMon
 
-## Prerequisites
+## Prerequisites (local execution)
 
-- non-ancient OTP/Erlang, ideally `26`
-- non-ancient Elixir, ideally `1.14`
+- [OTP/Erlang](https://github.com/asdf-vm/asdf-erlang), at least version `26`
+- [Elixir](https://github.com/asdf-vm/asdf-elixir), at least version `1.14`
 - Python 3 with numpy, pandas and matplotlib (for plotting benchmark results)
 
 ### Build prerequisites (Linux/Unix/Mac only)
 
-First, make sure your system has all dependencies for
-[Erlang](https://github.com/asdf-vm/asdf-erlang) and
-[Elixir](https://github.com/asdf-vm/asdf-elixir) installed. Then, run the
-following script to install Erlang and Elixir:
+Build dependencies for Erlang and Elixir:
+
+- `autoconf`
+- `make`
+- `libssl-dev`
+- `openssl`
+- `ncurses`
+- `wxWidgets`
+
+To automatically obtain the right versions of Erlang and Elixir, **source** (not
+run!) the following script to setup Erlang and Elixir via `asdf`:
 
 ```
 source install-otp.sh
 ```
 
-If you do not have `asdf` in your system, everything should be installed in the
-currently visited directory.
+If you do not have `asdf` on your system, everything should be installed in the
+current directory. You may need to run this script in every shell session in
+order to set up `PATH` correctly.
 
 
 ## OOPSLA benchmark reproduction
@@ -35,8 +43,8 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon
 
 The scripts take time to execute all experiments --- on our machines it takes
 around an hour to run the full benchmark. The plots shall be found in the
-`output` directory as PDF files named accordingly to the figures they represent,
-e.g. `output/fig_15_a.pdf` for *Figure 15a*.
+`output` directory as PDF files named accordingly to the figures they represent
+(e.g. `output/fig_15_a.pdf` for *Figure 15a*).
 
 Note that the produced plots may look differently than what is in the paper.
 This is an inevitable consequence of the non-deterministic nature of distributed
