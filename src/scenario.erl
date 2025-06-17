@@ -397,10 +397,11 @@ run_bench(Bench, Opts) ->
 
 -define(GRID_WIDTH, 50).
 grid_printer() ->
+    print_legend(),
     receive {workers, Ws, MaxSize} -> grid_printer(Ws, MaxSize) end.
 grid_printer(Ws, MaxSize) ->
     State = maps:from_list([{W, init} || W <- Ws]),
-    print_size(0, MaxSize),
+    %% print_size(0, MaxSize),
     print_grid(State),
     grid_printer_loop(State, 0, MaxSize).
 print_grid(State) ->
@@ -409,39 +410,69 @@ print_grid(State) ->
         " ]\n",
     io:format("~s", [S]).
 
+print_legend() ->
+    Legend =
+        [ begin
+              ansi_color:render([blob_format(Blob), " ", blob_descr(Blob)])
+          end
+          || Blob <- [init, woke, busy, done, dead, down, time]
+        ],
+    S = string:join(Legend, ansi_color:render({bold, " | "})),
+    io:format("~s ~s\n", [ansi_color:render({bold, "Legend:"}), S]).
+
+blob_format(Blob) ->
+    case Blob of
+        init -> {[black_l, bold], "."};
+        woke -> {[yellow, bold, dim], "o"};
+        busy -> {[yellow_l, bold], "O"};
+        done -> {[green, bold], "@"};
+        dead -> {[violet, bold, dim], "D"};
+        down -> {[red, blink, bold], "!"};
+        time -> {[blue_l, bold], "T"}
+    end.
+
+blob_descr(Blob) ->
+    case Blob of
+        init -> "Waiting";
+        woke -> "Preparing";
+        busy -> "Working";
+        done -> "Success";
+        dead -> "Deadlock";
+        down -> "Crash";
+        time -> "Timeout"
+    end.
+
 print_grid([], _) -> "";
 print_grid(Ws, ?GRID_WIDTH) ->
     "\n " ++
         print_grid(Ws, 0);
 print_grid([{_W, S}|Ws], I) ->
-    io_lib:format(" ~s", [case S of
-                              init -> ansi_color:render({[black_l, bold], "."});
-                              woke -> ansi_color:render({[yellow, bold, dim], "o"});
-                              busy -> ansi_color:render({[yellow_l, bold], "O"});
-                              done -> ansi_color:render({[green, bold], "@"});
-                              dead -> ansi_color:render({[violet, bold, dim], "#"});
-                              down -> ansi_color:render({[red, blink, bold], "!"});
-                              time -> ansi_color:render({[blue_l, bold], "T"})
-                          end]) ++
+    io_lib:format(" ~s", [ansi_color:render(blob_format(S))]) ++
         print_grid(Ws, I + 1).
-print_size(Size, MaxSize) ->
-    Width = ?GRID_WIDTH * 2,
-    Percent = (Width * Size) div (MaxSize * 2),
-    Free = Width - Percent,
-    io:format("\r~s\r>>~s~s<<\n", [ lists:flatten([" " || _ <- lists:seq(1, Width + 4)])
-                                , lists:flatten(["-" || _ <- lists:seq(1, Percent)])
-                                , lists:flatten([if Free < 0 -> "~"; true -> " " end || _ <- lists:seq(1, abs(Free))])
-                                ]).
+
+%% print_size(Size, MaxSize) ->
+%%     Width = max(1, ?GRID_WIDTH * 2 - 4),
+%%     Percent = (Width * Size) div (MaxSize * 2 - 4),
+%%     Free = Width - Percent,
+%%     io:format("\r~s\r>>~s~s<<\n", [ lists:flatten([" " || _ <- lists:seq(1, Width + 4)])
+%%                                 , lists:flatten(["-" || _ <- lists:seq(1, Percent)])
+%%                                 , lists:flatten([if Free < 0 -> "~"; true -> " " end || _ <- lists:seq(1, abs(Free))])
+%%                                 ]).
+
 clean_grid(Ws) ->
-    Height = ((maps:size(Ws) - 1) div ?GRID_WIDTH) + (_CompensateMinus1 = 1) + (_SizeRow = 1),
+    Height = ((maps:size(Ws) - 1) div ?GRID_WIDTH)
+        + (_CompensateMinus1 = 1)
+        %% + (_SizeRow = 1)
+        + (_StupidComma = 0),
     io:format("\e[~pA\r", [Height]).
+
 grid_printer_loop(State, Size, MaxSize) ->
     receive
         {update, W, WSize, S} ->
             State1 = State#{W => S},
             Size1 = Size + WSize,
             clean_grid(State1),
-            print_size(Size1, MaxSize),
+            %% print_size(Size1, MaxSize),
             print_grid(State1),
             grid_printer_loop(State1, Size1, MaxSize);
         {From, finito} ->

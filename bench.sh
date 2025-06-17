@@ -6,13 +6,12 @@ make
 SEED=0
 TIMESTAMP=$(date +%d-%m-%Y--%T)
 
-if [[ $2 ]]
+if [[ ! $DDMON_OUTDIR ]]
 then
-    OUTDIR=$2
-else
-    OUTDIR="./output/${TIMESTAMP}"
+    DDMON_OUTDIR="${PWD}/output"
 fi
 
+OUTDIR="${DDMON_OUTDIR}/${TIMESTAMP}"
 mkdir -p "${OUTDIR}"
 
 OUTDIR=$(realpath "${OUTDIR}")
@@ -106,10 +105,10 @@ done
 eval_echo python3 python/trace_log.py
 
 # Fix names
-mv "${OUTDIR}/bc_site.pdf" output/fig_15_a.pdf
-mv "${OUTDIR}/bc_probes.pdf" output/fig_15_b.pdf
-mv "${OUTDIR}/bc_sent.pdf" output/fig_15_c.pdf
+mv -f "${OUTDIR}/bc_site.pdf" output/fig_15_a.pdf
+mv -f "${OUTDIR}/bc_probes.pdf" output/fig_15_b.pdf
+mv -f "${OUTDIR}/bc_sent.pdf" output/fig_15_c.pdf
 
-mv "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
-mv "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
-mv "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
+mv -f "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
+mv -f "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
+mv -f "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
