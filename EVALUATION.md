@@ -197,7 +197,7 @@ adding `--indent=0` at the very end of each of the commands above.
 
 ## Running simulations
 
-`ddmon` comes with a testing platform for reproducing various (dead)lock
+DDMon comes with a testing platform for reproducing various (dead)lock
 scenarios in gen_server-based systems. Such scenarios are specified in Erlang
 `.conf` files and describe schedules of exchanged calls. We provide a bunch of
 scenarios in the `scenarios` directory. To evaluate a scenario `scenarios/example.conf`, run
@@ -339,9 +339,9 @@ workers, deadlock is avoided.
 }.
 ```
 
-## Applying `ddmon` to `gen_server`-based systems
+## Applying DDMon to `gen_server`-based systems
 
-In Erlang applications, `ddmon` is applied by replacing all references to the
+In Erlang applications, DDMon is applied by replacing all references to the
 `gen_server` module with `ddmon`. In Elixir, it suffices to add the following
 line right after `use GenServer`:
 
@@ -353,7 +353,7 @@ The tool supports only standard features of generic servers, i.e. the `call` and
 `cast` callbacks. Timeouts, deferred responses (`no_reply`) and pooled calls
 through `reqids` are not covered by the prototype.
 
-Below is an example of how `ddmon` is applied to a simple distributed system. We
+Below is an example of how DDMon is applied to a simple distributed system. We
 provide it not just for its sole evaluation, but also as a simple reference for
 custom experiments, which we encourage.
 
@@ -407,9 +407,9 @@ that the system is *not* monitored yet, thus the deadlock is not detected. Since
 the deadlock is subject to a data race (via randomised waits), you may need to
 try several times before you reproduce both results.
 
-#### Applying `ddmon`
+#### Applying DDMon
 
-To apply `ddmon` edit the following files:
+To apply DDMon to the project, edit the following files:
 
 - `example-system/lib/turnip_factory/producer.ex`
 - `example-system/lib/turnip_factory/inspector.ex`
