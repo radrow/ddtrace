@@ -9,7 +9,7 @@ defmodule Ddmon.TestServer do
 
   def init({id, {:router, n}, genserver_opts}) do
     pids = for _ <- 1..n do
-      {:ok, pid} = GenServer.start_link(__MODULE__, {id, :worker}, genserver_opts)
+      {:ok, pid} = GenServer.start_link(__MODULE__, {id, :worker, genserver_opts}, genserver_opts)
       pid
     end
 
