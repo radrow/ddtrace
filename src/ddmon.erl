@@ -6,7 +6,7 @@
 -define(PROBE_DELAY, '$ddmon_probe_delay').
 
 %% API
--export([start/3, start_link/3]).
+-export([start/2, start/3, start_link/2, start_link/3]).
 
 %% gen_server interface
 -export([call/2, call/3, cast/2, stop/3]).
@@ -65,14 +65,30 @@ deadstate_is_foreign(State) ->
 %%% API Functions
 %%%======================
 
+start(Module, Args) ->
+    start(Module, Args, []).
+
 start(Module, Args, Options) ->
     %% We allow running unmonitored systems via options
     case proplists:get_value(unmonitored, proplists:get_value(ddmon_opts, Options, []), false) of
         true ->
             gen_server:start(Module, Args, Options);
         false ->
-            gen_statem:start(?MODULE, {Module, Args, Options}, Options)
+            %% Elixir compat
+            ChildOptions = proplists:delete(name, Options),
+            case proplists:get_value(name, Options) of
+                undefined ->
+                    gen_statem:start(?MODULE, {Module, Args, ChildOptions}, Options);
+                Name when is_atom(Name) ->
+                    gen_statem:start({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
+                {global, Name} ->
+                    gen_statem:start({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+            end
     end.
+
+
+start_link(Module, Args) ->
+    start_link(Module, Args, []).
 
 start_link(Module, Args, Options) ->
     %% We allow running unmonitored systems via options
@@ -80,7 +96,16 @@ start_link(Module, Args, Options) ->
         true ->
             gen_server:start_link(Module, Args, Options);
         false ->
-            gen_statem:start_link(?MODULE, {Module, Args, Options}, Options)
+            %% Elixir compat
+            ChildOptions = proplists:delete(name, Options),
+            case proplists:get_value(name, Options) of
+                undefined ->
+                    gen_statem:start_link(?MODULE, {Module, Args, ChildOptions}, Options);
+                Name when is_atom(Name) ->
+                    gen_statem:start_link({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
+                {global, Name} ->
+                    gen_statem:start_link({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+            end
     end.
 
 

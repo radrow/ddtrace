@@ -45,7 +45,7 @@ RUN echo "#!/bin/bash" > /usr/bin/asdf-run \
 RUN echo ". /opt/asdf/asdf.sh" >> $HOME/.bashrc
 
 # Create output directory
-RUN mkdir -p output
+RUN mkdir -p -m 777 output
 VOLUME ["output"]
 
 ENV TERM=xterm

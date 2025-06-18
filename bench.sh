@@ -119,4 +119,6 @@ mv -f "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
 mv -f "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
 mv -f "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
 
+chmod 666 output/*.pdf
+
 echo Done
