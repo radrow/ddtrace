@@ -13,6 +13,7 @@ defmodule Ddmon.Main do
     \t--csv\tOutput log file in CSV format
     \t--stats-csv\tOutput stats file in CSV format
     \t--seed\tRNG seed (default unset)
+    \t--silent\tDo not print the trace (default unset)
     \t--probe-delay\tWhether to send probes with a delay. 0 means no delay, but asynchronous. -1 (default) means no delay.
     \t--unmonitored\tRuns services as regular generic servers
     Prefix options with "no-" to disable them, eg. "--no-trace-mon"
