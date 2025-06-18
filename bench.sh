@@ -59,20 +59,26 @@ run_bench() {
     append_meta "${STATS_FILE}" "${TEST_FILE}" "${PDELAY}" "${TIMEOUT}"
 }
 
-# This works only because there are two options; execute all if none given.
-if [[ "${ARG}" != bc ]]; then
-    run_bench "scenarios/big.conf" ts -1 10000
-    # run_bench "scenarios/big.conf" ts 500 10000
-    run_bench "scenarios/big.conf" ts 1000 10000
-    run_bench "scenarios/big.conf" ts 5000 10000
+if [[ -z "${ARG:-}" ]]; then
+    run_bench "scenarios/ts.conf" ts -1 10000
+    run_bench "scenarios/ts.conf" ts 1000 10000
+    run_bench "scenarios/ts.conf" ts 5000 10000
+
+    run_bench "scenarios/bc.conf" bc unmonitored 10000
+    run_bench "scenarios/bc.conf" bc -1 10000
+    run_bench "scenarios/bc.conf" bc 1000 10000
+    run_bench "scenarios/bc.conf" bc 5000 10000
 fi
 
-if [[ "${ARG}" != ts ]]; then
-    run_bench "scenarios/bench.conf" bc unmonitored 10000
-    run_bench "scenarios/bench.conf" bc -1 10000
-    # run_bench "scenarios/bench.conf" bc 500 10000
-    run_bench "scenarios/bench.conf" bc 1000 10000
-    run_bench "scenarios/bench.conf" bc 5000 10000
+if [[ "${ARG:-}" == 'small' ]]; then
+    run_bench "scenarios/ts-small.conf" ts -1 10000
+    run_bench "scenarios/ts-small.conf" ts 1000 10000
+    run_bench "scenarios/ts-small.conf" ts 5000 10000
+
+    run_bench "scenarios/bc-small.conf" bc unmonitored 10000
+    run_bench "scenarios/bc-small.conf" bc -1 10000
+    run_bench "scenarios/bc-small.conf" bc 1000 10000
+    run_bench "scenarios/bc-small.conf" bc 5000 10000
 fi
 
 
@@ -112,3 +118,5 @@ mv -f "${OUTDIR}/bc_sent.pdf" output/fig_15_c.pdf
 mv -f "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
 mv -f "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
 mv -f "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
+
+echo Done

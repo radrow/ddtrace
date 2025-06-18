@@ -82,7 +82,7 @@ def bench(column, label=None, show=False, plot=plt):
         plt.show()
     else:
         outfile = f"output/last/bc_{column}.pdf"
-        print("Bench output: ", outfile)
+        # print("Bench output: ", outfile)
         plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
 
@@ -198,7 +198,7 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
         plt.show()
     else:
         outfile = Path(filepath).with_suffix(".pdf")
-        print("Timeseries output: ", outfile)
+        # print("Timeseries output: ", outfile)
         plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
 
