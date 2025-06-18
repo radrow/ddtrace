@@ -175,12 +175,13 @@ custom experiments, which we encourage to try.
 
 ### Example: turnip factory
 
-We provide an example Elixir application in the `example-system` directory. The
-application implements a simple distributed system where two Producers (tagged 1
-and 2) produce turnip and ask Inspectors (tagged 1 and 2 respectively) to
-"validate" their produce before it is returned to the caller. Inspectors 1 and 2
-validate turnip by comparing it to metadata provided by Producers 2 and 1
-respectively (note the difference in order).
+We provide an example Elixir application in the `example-system` directory (see
+the [README](example-system/README.md)). The application implements a simple
+distributed system where two Producers (tagged 1 and 2) produce turnip and ask
+Inspectors (tagged 1 and 2 respectively) to "validate" their produce before it
+is returned to the caller. Inspectors 1 and 2 validate turnip by comparing it to
+metadata provided by Producers 2 and 1 respectively (note the difference in
+order).
 
 There are two scenarios which may occur in this setup:
 

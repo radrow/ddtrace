@@ -15,12 +15,14 @@ well-audited turnip production.
 
 ## Services
 
+Both services are implemented as simple generic servers.
+
 ### Producer
 
 `Producer` produces objects (representing real turnip) according to some
 metadata which it was provided with during initialisation. Before a turnip is
 returned to the caller, it must be first inspected by an `Inspector` --- only if
-it passes its opaque audit, it can be returned to the caller.
+it passes its meticulous audit, it can be returned to the caller.
 
 Aside from producing turnip, `Producer` may also provide the metadata of its
 produce.
@@ -28,7 +30,7 @@ produce.
 ### Inspector
 
 `Inspector` checks compliance of turnips against metadata of a reference turnip
-`Producer`. In order to perform the audit, the inspector asks its reference
+producer. In order to perform the audit, the inspector asks its reference
 producer for metadata and replies `ok` when certain conditions are met (in our
 scenario they are always met). Different inspectors may use different producers
 for their references.
