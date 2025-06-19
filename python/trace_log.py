@@ -152,7 +152,7 @@ def ms_formatter(x, pos=None):
     return x.strftime('%H:%M:%S.') + f"{x.microsecond // 1000:03d}"
 
 
-def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None, None), figsize=None):
+def timeseries(filepath, label=None, pcolor='orange', outfile=None, range_ms=(None, None), figsize=None):
     if figsize is not None:
         plt.figure(figsize=figsize, dpi=600)
     data = pd.read_csv(filepath, keep_default_na=False, comment="#")
@@ -194,10 +194,10 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
 
     # plt.gca().set_ylim([0, 11500])  # Scaling used in the paper
 
-    if show:
+    if not outfile:
         plt.show()
     else:
-        outfile = Path(filepath).with_suffix(".pdf")
+        # outfile = Path(filepath).with_suffix(".pdf")
         # print("Timeseries output: ", outfile)
         plt.savefig(outfile, dpi=600, bbox_inches="tight")
         plt.close()
@@ -227,6 +227,8 @@ def gen_plots():
 def main():
     parser = argparse.ArgumentParser(description="This is serious enterprise software.")
 
+    parser.add_argument('--pcolor', type=str, help="Probe line color", default='orange')
+    parser.add_argument('-o', type=str, help="Output file", required=False)
     parser.add_argument('-t', type=str, help="Timeseries CSV file", required=False)
     parser.add_argument('-b', type=str, help="Benchmark CSV file", required=False)
     parser.add_argument('-s', type=str, help="Benchmark CSV file", required=False)
@@ -235,7 +237,7 @@ def main():
     args = parser.parse_args()
 
     if args.t:
-        timeseries(args.t, show=True)
+        timeseries(args.t, outfile=args.o, pcolor=args.pcolor)
     elif args.b:
         bench_file(args.b, 'service')
         bench_file(args.b, 'sent')

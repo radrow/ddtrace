@@ -117,8 +117,11 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
 **Note:** the command above may take about one hour to finish (tested on Fedora
-42 running on 11th Gen Intel Core i7-1185G7 with 32GB of RAM). For a less
-accurate, yet much faster results (about 7 minutes) run the following instead:
+42 running on 11th Gen Intel Core i7-1185G7 with **32GB of RAM**). For a less
+resource-intensive variant, run the command below instead (this one takes about
+10 minutes on the same machine). Note that we used the command above to obtain
+our results, thus the outputs of the following command might be less similar to
+the figures in the paper.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium
@@ -129,9 +132,9 @@ After that, the following PDF files should be generated:
 - *Figure 15a*: `output/figure_15_a.pdf`
 - *Figure 15b*: `output/figure_15_b.pdf`
 - *Figure 15c*: `output/figure_15_c.pdf`
-- *Figure 16a*: `output/figure_16_a.pdf`
-- *Figure 16b*: `output/figure_16_b.pdf`
-- *Figure 16c*: `output/figure_16_c.pdf`
+- *Figure 16a*: `output/figure_16_a/*.pdf` (many files)
+- *Figure 16b*: `output/figure_16_b/*.pdf` (many files)
+- *Figure 16c*: `output/figure_16_c/*.pdf` (many files)
 
 Note that the produced plots may look different w.r.t. those in the paper. This
 is because the benchmarks perform multiple executions of concurrent systems, and
@@ -140,25 +143,38 @@ intrinsic nondeterminism in their behaviour, and (2) further nondeterminism
 introduced by scheduling (similarly to the non-deterministic deadlock
 illustrated in Example 3.10 in the paper). More specifically:
 
-- *Figure 15*: the produced plot may be slightly different w.r.t. the paper, but
-  the overall trends should be the same.
+#### Figure 15
 
-- *Figure 16*: the figure in the paper visualises one specific execution per
-  probe emission delay (none, 1000ms, or 5000ms). To produce the figure we
-  manually selected 3 executions that clearly show how many queries, responses,
-  and probes may be emitted, and when, in case of a deadlock. The 3 plots
-  selected by the benchmark script may depict rather different executions w.r.t.
-  the paper: a deadlock may occur earlier, or later, or not occur at all.
-  However, it is possible to examine all executions for Figure 16 by executing:
+The produced plot may be slightly different w.r.t. the paper, but the overall
+trends should be the same:
 
-  ```bash
-  PROBE_DELAY=5000
-  ls -1dt output/*/ | head -n1 | xargs -I DIR find DIR/ts_p$PROBE_DELAY/ -type f | xargs -n1 python python/trace_log.py -t
-  ```
+- In *Figures 15a, 15b and 15c*, the orange line should show values greater than
+  blue and green, while red should be above orange.
+- In *Figures 15a and 15b*, the blue line should present roughly the same values
+  as the green one.
+- In *Figure 15b*, the blue and green lines should be close to zero.
+- In *Figure 15c*, the blue line should show values approximately 3 times lower
+  than other lines.
 
-  Where `PROBE_DELAY` can be set to `-1` (no probe delay), `1000` or `5000`
-  (1000ms and 5000ms of probe delay respectively).
+#### Figure 16
 
+The figure in the paper visualises one specific execution per probe emission
+delay (none, 1000ms, or 5000ms). To produce the figure we manually selected 3
+executions that clearly show how many queries, responses, and probes may be
+emitted, and when, in case of a deadlock. The benchmark script runs numerous
+experiments for each delay, thus yields many candidates for Figures *16a*, *16b*
+and *16c*. The following trends should be observed:
+
+- In variants of *Figure 16a*, the red solid line rises early and often above
+  the dashed cyan one.
+- In variants of *Figure 16b* and *Figure 16c*, the orange and green solid lines
+  are generally below both dashed cyan and dotted blue lines.
+- In variants of *Figure 16c*, the green solid line should be close to zero
+  unless a red dashed vertical line (indicating a deadlock) is present.
+
+In each plot, there may be any number of deadlocks marked by red dashed vertical
+lines. Specifically, it is not necessary that *Figure 16a and 16b* do not have
+such a line, while *Figure 16c* has (as in the figures in the paper).
 
 ### Simulation logs
 

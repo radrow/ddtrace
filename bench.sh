@@ -71,14 +71,14 @@ if [[ -z "${ARG:-}" ]]; then
 fi
 
 if [[ "${ARG:-}" == 'small' ]]; then
-    run_bench "scenarios/ts-small.conf" ts -1 10000
-    run_bench "scenarios/ts-small.conf" ts 1000 10000
-    run_bench "scenarios/ts-small.conf" ts 5000 10000
+    run_bench "scenarios/ts-small.conf" ts -1 1000
+    run_bench "scenarios/ts-small.conf" ts 1000 3000
+    run_bench "scenarios/ts-small.conf" ts 5000 80000
 
-    run_bench "scenarios/bc-small.conf" bc unmonitored 10000
-    run_bench "scenarios/bc-small.conf" bc -1 10000
-    run_bench "scenarios/bc-small.conf" bc 1000 10000
-    run_bench "scenarios/bc-small.conf" bc 5000 10000
+    run_bench "scenarios/bc-small.conf" bc unmonitored 1000
+    run_bench "scenarios/bc-small.conf" bc -1 1000
+    run_bench "scenarios/bc-small.conf" bc 1000 3000
+    run_bench "scenarios/bc-small.conf" bc 5000 8000
 fi
 
 if [[ "${ARG:-}" == 'medium' ]]; then
@@ -126,10 +126,31 @@ mv -f "${OUTDIR}/bc_site.pdf" output/fig_15_a.pdf
 mv -f "${OUTDIR}/bc_probes.pdf" output/fig_15_b.pdf
 mv -f "${OUTDIR}/bc_sent.pdf" output/fig_15_c.pdf
 
-mv -f "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
-mv -f "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
-mv -f "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
+# mv -f "${OUTDIR}/ts_p-1.pdf" output/fig_16_a.pdf
+# mv -f "${OUTDIR}/ts_p1000.pdf" output/fig_16_b.pdf
+# mv -f "${OUTDIR}/ts_p5000.pdf" output/fig_16_c.pdf
 
-chmod 666 output/*.pdf
+mkdir -p ./output/fig_16_a/
+for f in $(find "${OUTDIR}/ts_p-1/" -type f -exec basename {} \;)
+do
+    outfile="./output/fig_16_a/${f%.*}.pdf"
+    python3 python/trace_log.py -t "${OUTDIR}/ts_p-1/${f}" -o $outfile --pcolor red
+done
+
+mkdir -p ./output/fig_16_b/
+for f in $(find "${OUTDIR}/ts_p1000/" -type f -exec basename {} \;)
+do
+    outfile="./output/fig_16_b/${f%.*}.pdf"
+    python3 python/trace_log.py -t "${OUTDIR}/ts_p1000/${f}" -o $outfile --pcolor orange
+done
+
+mkdir -p ./output/fig_16_c/
+for f in $(find "${OUTDIR}/ts_p5000/" -type f -exec basename {} \;)
+do
+    outfile="./output/fig_16_c/${f%.*}.pdf"
+    python3 python/trace_log.py -t "${OUTDIR}/ts_p5000/${f}" -o $outfile --pcolor limegreen
+done
+
+find output -name "*.pdf" | xargs -n1 chmod 666
 
 echo Done
