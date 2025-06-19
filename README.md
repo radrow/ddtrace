@@ -38,7 +38,7 @@ the following build dependencies installed on your system:
 - `wxWidgets`
 
 To automatically obtain the right versions of Erlang and Elixir, **source** (not
-run!) the provided script:
+run!) the provided script in `bash`:
 
 ```bash
 source install-otp.sh
