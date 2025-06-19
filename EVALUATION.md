@@ -66,7 +66,7 @@ Run the following command:
 docker run --rm ddmon ./ddmon scenarios/supersimple.conf
 ```
 
-The output should look (more or less) as follows:
+The output should resemble the following:
 
 ```
 Node: ddmon@32063e08d1f7
@@ -98,6 +98,11 @@ Time: 10570973
 
 ### TERMINATED ###
 ```
+
+Importantly, the output should contain the same log and summary statistics (the
+numbers may differ) and should end with the line `### TERMINATED ###`. It should
+not contain stack traces nor error messages --- otherwise, please send us the
+entire output.
 
 
 ## Reproducing the results from the paper
