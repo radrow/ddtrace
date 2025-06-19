@@ -1,18 +1,20 @@
 # DDMon
 
-## Evaluation
+DDMon is a deadlock monitoring tool for Erlang and Elixir programs based on the
+`gen_server` behaviour.
 
-__To evaluate the OOPSLA artifact, please move to [EVALUATION.md](EVALUATION.md).__
+This document contains prerequisites and instructions for building and running
+DDMon locally.
 
-## Local build
+**NOTE:** To evaluate the OOPSLA'25 artifact, you can use a Docker-based setup
+for DDMon, instead of a local build. In this case, you can skip this file and
+move directly to the instructions in [EVALUATION.md](EVALUATION.md).
 
-Here are instructions for building and running the project locally. You should
-not need to do it to evaluate the artifact — instead, follow the instructions in
-[EVALUATION.md](EVALUATION.md) which guide through a docker setup.
+**NOTE:** The following instructions are tested on GNU/Linux (Ubuntu 24.04 and
+Fedora 42).
 
----
 
-Prerequisites:
+## Prerequisites
 
 - [OTP/Erlang](https://www.erlang.org/), at least version `26`
 - [Elixir](https://elixir-lang.org/), at least version `1.14`
@@ -21,24 +23,12 @@ Prerequisites:
   [pandas](https://pandas.pydata.org/) and [matplotlib](https://matplotlib.org/)
   (for plotting benchmark results)
 
-To build the project, run
 
-```bash
-make
-```
-
-If you do not have `make`, run the following instead
-
-```bash
-mix deps.get
-mix escript.build
-```
-
-### Local installation of Erlang and Elixir (Linux/Unix/maybe Mac)
+### Optional: script for a fresh local installation of Erlang and Elixir
 
 If you do not have Erlang or Elixir installed, we provide a script that
-automatically downloads and installs the correct versions locally. Make sure you
-have the following build dependencies installed on your system:
+automatically downloads and installs the correct versions. Make sure you have
+the following build dependencies installed on your system:
 
 - `autoconf`
 - `make`
@@ -59,21 +49,43 @@ Erlang and Elixir. If you do not have `asdf` on your system, it shall be
 installed in the currently visited directory. You may need to run this script in
 every shell session in order to set up `PATH` correctly.
 
-## Application
 
-DDMon serves as a drop-in replacement for generic servers. To use it, include
-the contents of the `src` directory in your project and replace all references
-to `gen_server` or `GenServer` with `ddmon`.
+## Building DDMon
+
+To build DDMon, run
+
+```bash
+make
+```
+
+If you do not have `make`, you can run the following instead
+
+```bash
+mix deps.get
+mix escript.build
+```
+
+
+## Usage
+
+DDMon serves as a drop-in replacement for Erlang and Elixir generic server
+behaviour (`gen_server`). To use it, include the contents of the [src/](src/)
+directory in your project and replace all references to `gen_server` or
+`GenServer` with `ddmon`.
+
+For more details, please see [EXAMPLE.md](EXAMPLE.md).
+
 
 ## Testing
 
-After building the project, run
+After building the project, you can run:
 
 ```bash
-./ddmon FILE
+./ddmon SCENARIO_FILE
 ```
 
-Where `FILE` is a file describing the test scenario. For tweaking information,
-see `./ddmon --help`.
+Where `SCENARIO_FILE` is a file describing the test scenario. For tweaking
+information, see `./ddmon --help`.
 
-See [SCENARIOS.md](SCENARIOS.md) for instructions on how to program custom tests.
+See [SCENARIOS.md](SCENARIOS.md) for the documentation on how the DDMon scenario
+tests work, and instructions on how to define new test scenarios.
