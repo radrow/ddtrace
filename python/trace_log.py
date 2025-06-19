@@ -192,7 +192,7 @@ def timeseries(filepath, label=None, pcolor='orange', show=False, range_ms=(None
         # plt.title(label)
         plt.legend(loc='lower right', bbox_to_anchor=(0.95, 0.1), fontsize=19)
 
-    plt.gca().set_ylim([0, 11500])
+    # plt.gca().set_ylim([0, 11500])  # Scaling used in the paper
 
     if show:
         plt.show()

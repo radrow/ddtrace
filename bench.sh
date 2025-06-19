@@ -81,6 +81,17 @@ if [[ "${ARG:-}" == 'small' ]]; then
     run_bench "scenarios/bc-small.conf" bc 5000 10000
 fi
 
+if [[ "${ARG:-}" == 'medium' ]]; then
+    run_bench "scenarios/ts-mid.conf" ts -1 10000
+    run_bench "scenarios/ts-mid.conf" ts 1000 10000
+    run_bench "scenarios/ts-mid.conf" ts 5000 10000
+
+    run_bench "scenarios/bc-mid.conf" bc unmonitored 5000
+    run_bench "scenarios/bc-mid.conf" bc -1 10000
+    run_bench "scenarios/bc-mid.conf" bc 1000 10000
+    run_bench "scenarios/bc-mid.conf" bc 5000 10000
+fi
+
 
 # Save under deterministic name
 DETDIR="${OUTDIR}/../last"

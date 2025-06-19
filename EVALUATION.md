@@ -99,23 +99,30 @@ Time: 10570973
 ### TERMINATED ###
 ```
 
-Importantly, the output should contain the same log and summary statistics (the
-numbers may differ) and should end with the line `### TERMINATED ###`. It should
-not contain stack traces nor error messages --- otherwise, please send us the
-entire output.
+- It should end with the line `### TERMINATED ###`.
+- It should not contain stack traces nor error messages --- otherwise, please
+  send us the entire output.
+- Time measurements (e.g. `00:010:601` or `Time: 10570973`) may be different.
 
 
 ## Reproducing the results from the paper
 
 ### Reproducing the plots
 
-To reproduce *Figures 15 and 16* in the paper, please run the following command:
+To reproduce *Figures 15 and 16* in the paper, please run the following command.
+
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
-**Note:** this command may take about one hour to finish.
+**Note:** the command above may take about one hour to finish (tested on Fedora
+42 running on 11th Gen Intel Core i7-1185G7 with 32GB of RAM). For a less
+accurate, yet much faster results (about 7 minutes) run the following instead:
+
+```bash
+docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium
+```
 
 After that, the following PDF files should be generated:
 
@@ -148,7 +155,7 @@ illustrated in Example 3.10 in the paper). More specifically:
   PROBE_DELAY=5000
   ls -1dt output/*/ | head -n1 | xargs -I DIR find DIR/ts_p$PROBE_DELAY/ -type f | xargs -n1 python python/trace_log.py -t
   ```
-  
+
   Where `PROBE_DELAY` can be set to `-1` (no probe delay), `1000` or `5000`
   (1000ms and 5000ms of probe delay respectively).
 
