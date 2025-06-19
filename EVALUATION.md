@@ -27,13 +27,12 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh small
 ```
 
 The program should terminate after about a minute and print `Done` at the end.
-No stacktrace (red text) should be printed --- if that is the case, please send
-us the entire output. If you run into permission issues, delete the `output`
-folder and try again.
+No stacktrace (wall of red text) should be printed --- if that is the case,
+please send us the entire output. If you run into permission issues, delete the
+`output` folder and try again.
 
-After the program has finished, the `output` folder should contain PDF files,
-(e.g. `figure_16_a.pdf`) which should contain line plots (their shape does not
-matter yet).
+After the program has finished, the `output` folder should contain PDF files
+(e.g. `figure_16_a.pdf`) with line plots (their shape does not matter yet).
 
 ### Scenario experiment
 
@@ -102,14 +101,11 @@ This is an inevitable consequence of the non-deterministic nature of distributed
 systems, which are subject to data races. This is especially likely for *Figure
 16*, where we manually selected runs that resulted in deadlocks to show
 communication overhead in case of a deadlock. If you want to see plots for
-*Figure 16* from other runs
-
-All variants of *Figure 16*  might be previewed by running
+*Figure 16* from other executions, run
 
 ```bash
 DELAY=5000
-ls -1dt output/*/ | head -n1 | xargs -I DIR find DIR/ts_p$DELAY/ -type f | xargs -n1 python python/trace_
-log.py -t
+ls -1dt output/*/ | head -n1 | xargs -I DIR find DIR/ts_p$DELAY/ -type f | xargs -n1 python python/trace_log.py -t
 ```
 
 Where `DELAY` can be set to `-1` (no probe delay), `1000` or `5000` (1000ms and
@@ -119,9 +115,9 @@ Where `DELAY` can be set to `-1` (no probe delay), `1000` or `5000` (1000ms and
 
 The following command executes the scenario pictured in *Figure 7* and discussed
 in *Appendix A.1* (*Listings 1* and *2*). Note that due to development of the
-tool, the format of the log may differ slightly in formatting. Moreover, since
-the deadlock is contingent on data races, it might take a few retries to
-reproduce it.
+tool, the format of the log may **slightly differ** in formatting. Moreover,
+since the deadlock is contingent on data races, it might **take a few retries**
+to reproduce it.
 
 ```bash
 docker run --rm ddmon ./ddmon scenarios/envelope.conf
@@ -145,21 +141,23 @@ adding `--indent=0` at the very end of each of the commands above.
 
 DDMon comes with a testing platform for reproducing various (dead)lock scenarios
 in gen_server-based systems. Such scenarios are specified in Erlang `.conf`
-files and describe schedules of exchanged calls. We provide a bunch of scenarios
-in the `scenarios` directory. To evaluate a scenario `scenarios/example.conf`,
-run
+files and schedule calls exchanged by services in a simulated network. We
+provide a bunch of scenarios in the `scenarios` directory. For more information
+about this feature, see [SCENARIOS.md](SCENARIOS.md) and *Appendix 1* of the
+paper.
+
+To evaluate a scenario `scenarios/example.conf`, run
 
 ```bash
 docker run --rm ddmon ./ddmon scenarios/example.conf
 ```
 
-For more information, see *Appendix 1* and [SCENARIOS.md](SCENARIOS.md).
 
 ## Applying DDMon to `gen_server`-based systems
 
 In Erlang applications, DDMon is applied by replacing all references to the
 `gen_server` module with `ddmon`. In Elixir, it suffices to add the following
-line right after `use GenServer`:
+line right after `use GenServer` at the top of the file:
 
 ```elixir
 alias :ddmon, as: GenServer
@@ -167,7 +165,7 @@ alias :ddmon, as: GenServer
 
 The tool supports only standard features of generic servers, i.e. the `call` and
 `cast` callbacks. Timeouts, deferred responses (`no_reply`) and pooled calls
-through `reqids` are not covered by the prototype.
+through `reqids` are not covered by the prototype yet.
 
 Below is an example of how DDMon is applied to a simple distributed system. We
 provide it not just for its sole evaluation, but also as a simple reference for
@@ -177,15 +175,15 @@ custom experiments, which we encourage to try.
 
 We provide an example Elixir application in the `example-system` directory (see
 the [README](example-system/README.md)). The application implements a simple
-distributed system where two Producers (tagged 1 and 2) produce turnip and ask
+distributed system where two Producers (tagged 1 and 2) construct values and ask
 Inspectors (tagged 1 and 2 respectively) to "validate" their produce before it
-is returned to the caller. Inspectors 1 and 2 validate turnip by comparing it to
-metadata provided by Producers 2 and 1 respectively (note the difference in
-order).
+is returned to the caller. Inspectors 1 and 2 validate these values by comparing
+it to metadata provided by Producers 2 and 1 respectively (note that the id
+numbers are flipped).
 
 There are two scenarios which may occur in this setup:
 
-#### No deadlock
+##### No deadlock
 
 1. Producer 1 receives a call
 2. Producer 1 computes a result asks Inspector 1 for audit
@@ -198,7 +196,7 @@ There are two scenarios which may occur in this setup:
 
 Both calls result with a value returned to the caller.
 
-#### Deadlock
+##### Deadlock
 
 1. Producers 1 and 2 receive calls
 2. Producer 1 asks Inspector 1 for audit
