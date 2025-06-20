@@ -161,20 +161,20 @@ trends should be the same:
 The figure in the paper visualises one specific execution per probe emission
 delay (none, 1000ms, or 5000ms). To produce the figure we manually selected 3
 executions that clearly show how many queries, responses, and probes may be
-emitted, and when, in case of a deadlock. The benchmark script runs numerous
-experiments for each delay, thus yields many candidates for Figures *16a*, *16b*
-and *16c*. The following trends should be observed:
+emitted, and when. The benchmark script runs numerous experiments for each
+delay, thus yields many candidates for Figures *16a*, *16b* and *16c*. The
+following trends should be observed:
 
 - In variants of *Figure 16a*, the red solid line rises early and often above
   the dashed cyan one.
 - In variants of *Figure 16b* and *Figure 16c*, the orange and green solid lines
-  are generally below both dashed cyan and dotted blue lines.
+  (respectively) are generally below both dashed cyan and dotted blue lines.
 - In variants of *Figure 16c*, the green solid line should be close to zero
   unless a red dashed vertical line (indicating a deadlock) is present.
 
 In each plot, there may be any number of deadlocks marked by red dashed vertical
-lines. Specifically, it is not necessary that *Figure 16a and 16b* do not have
-such a line, while *Figure 16c* has (as in the figures in the paper).
+lines. It is not necessary that *Figure 16a and 16b* do not have such a line,
+while *Figure 16c* has (as in the figures in the paper).
 
 ### Simulation logs
 
