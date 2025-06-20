@@ -14,17 +14,19 @@ For this evaluation, we recommend building and running DDMon within a
 following commands:
 
 ```bash
-mkdir -p output         # Creates a directory for the plots and other data
-docker build -t ddmon . # Creates a Docker image called 'ddmon'
+mkdir -p output          # Creates a directory for the plots and other data
+docker build -t ddmon .  # Creates a Docker image called 'ddmon'
 ```
 
 (Note: the creation of the Docker image might take several minutes.)
 
-## "Kick the tires"
 
-The following instructions assess whether DDMon is working as intended within
-the Docker container created above. They check two features: the generation of
-PDF files containing plots, and the execution of test scenarios.
+## "Kick the tires" instructions
+
+The following instructions explain how to assess whether DDMon is working as
+intended within the Docker container created above. These steps check two
+features: the generation of PDF files containing plots, and the execution of
+test scenarios.
 
 
 ### Plot generation
@@ -51,10 +53,10 @@ please send us the entire output. If you run into permission issues, please
 delete the `output` folder and try again.
 
 After the program has finished, the `output` folder should contain PDF files
-with various plots (e.g. `figure_16_a.pdf`).
+with various plots (e.g. `figure_15_a.pdf`).
 
-Please try visualising such PDF files with a PDF reader: if the files contain
-some sort of plot (the plotted values are not important), then this step of the
+Please try visualising such PDF files with a PDF viewer: if the files contain
+some form of plot (the plotted values are not important), then this step of the
 "Kick the tires" assessment is completed.
 
 
@@ -99,10 +101,13 @@ Time: 10570973
 ### TERMINATED ###
 ```
 
+More specifically, the generated output should satisfy these requirements:
+
 - It should end with the line `### TERMINATED ###`.
 - It should not contain stack traces nor error messages --- otherwise, please
   send us the entire output.
-- Time measurements (e.g. `00:010:601` or `Time: 10570973`) may be different.
+- The time measurements (e.g. `00:010:601` or `Time: 10570973`) may be
+  different.
 
 
 ## Reproducing the results from the paper
@@ -111,17 +116,17 @@ Time: 10570973
 
 To reproduce *Figures 15 and 16* in the paper, please run the following command.
 
-
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
-**Note:** the command above may take about one hour to finish (tested on Fedora
-42 running on 11th Gen Intel Core i7-1185G7 with **32GB of RAM**). For a less
-resource-intensive variant, run the command below instead (this one takes about
-10 minutes on the same machine; needs 10GB of available RAM). Note that we used
-the command above to obtain our results, thus the outputs of the following
-command might be less similar to the figures in the paper.
+**Note:** the command above takes about **one hour** to complete on a computer
+with Intel Core i7-1185G7 (4 CPU cores) and **32GB of RAM**, running Fedora 42.
+This is what we used to obtain the results in the paper.
+
+For a less resource-intensive variant (which may less accurately align to the
+results in the paper), you can run the following command instead: it takes about
+10 minutes on the same computer, and needs **10GB of available RAM**.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium
@@ -141,40 +146,59 @@ is because the benchmarks perform multiple executions of concurrent systems, and
 each execution may or may not deadlock at a certain time, depending on (1)
 intrinsic nondeterminism in their behaviour, and (2) further nondeterminism
 introduced by scheduling (similarly to the non-deterministic deadlock
-illustrated in Example 3.10 in the paper). More specifically:
+illustrated in Example 3.10 in the paper).
+
+The following subsections explain how to compare the plots produced by the
+benchmark scripts above with those in the paper.
 
 #### Figure 15
 
-The produced plot may be slightly different w.r.t. the paper, but the overall
-trends should be the same:
+The plots produced for Figure 15 by our benchmarking script do not have a legend
+(we manually placed the legend shown in the paper). The produced plots may be
+slightly different w.r.t. the paper, but the overall trends should be the same:
 
 - In *Figures 15a, 15b and 15c*, the orange line should show values greater than
-  blue and green, while red should be above orange.
+  blue and green lines, while red line should be above the orange line.
 - In *Figures 15a and 15b*, the blue line should present roughly the same values
-  as the green one.
+  as the green line.
 - In *Figure 15b*, the blue and green lines should be close to zero.
 - In *Figure 15c*, the blue line should show values approximately 3 times lower
-  than other lines.
+  than the other lines.
 
 #### Figure 16
 
-The figure in the paper visualises one specific execution per probe emission
-delay (none, 1000ms, or 5000ms). To produce the figure we manually selected 3
-executions that clearly show how many queries, responses, and probes may be
-emitted, and when. The benchmark script runs numerous experiments for each
-delay, thus yields many candidates for Figures *16a*, *16b* and *16c*. The
-following trends should be observed:
+Each time series in Figure 16 in the paper visualises one specific execution of
+the benchmarked scenario, under different probe emission delays (0ms, 1000ms, or
+5000ms). To produce Figure 16 we manually selected 3 executions that clearly
+show how many queries, responses, and probes may be emitted, and when. The
+benchmark script in the artifact runs and plots numerous experiments for each
+probe delay, and thus, produces many candidate plots for Figures *16a*, *16b*
+and *16c*; the script saves all such candidate plots as PDF files in the
+directories `output/figure_16_a/`, `output/figure_16_b/`, and
+`output/figure_16_c/`, respectively.
 
-- In variants of *Figure 16a*, the red solid line rises early and often above
-  the dashed cyan one.
-- In variants of *Figure 16b* and *Figure 16c*, the orange and green solid lines
-  (respectively) are generally below both dashed cyan and dotted blue lines.
-- In variants of *Figure 16c*, the green solid line should be close to zero
-  unless a red dashed vertical line (indicating a deadlock) is present.
+In each produced plot, there may be any number of deadlocks (usually zero or
+one) reported as red dashed vertical lines; to create the figures in the paper,
+we selected two plots without deadlocks (Figures *16a* and *16b*), and one plot
+with a deadlock (Figure *16c*), and we manually placed the corresponding
+legends.
 
-In each plot, there may be any number of deadlocks marked by red dashed vertical
-lines. It is not necessary that *Figure 16a and 16b* do not have such a line,
-while *Figure 16c* has (as in the figures in the paper).
+When inspecting the candidate plots produced by the benchmarking scripts, you
+should be able to observe the following trends (also visible in the paper):
+
+- In the candidate plots for *Figure 16a* (PDF files saved in the directory
+  `output/figure_16_a/`), the red solid line rises early, and often rises above
+  the dashed cyan line.
+- In the candidate plots for *Figure 16b* (PDF files saved in the directory
+  `output/figure_16_b/`), the orange solid line is generally below both the
+  dashed cyan and dotted blue lines.
+- In the candidate plots for *Figure 16c* (PDF files saved in the directory
+  `output/figure_16_c/`), the green solid line is generally below both dashed
+  cyan and dotted blue lines; moreover, the green solid line should be always
+  close to zero, _unless_ a red dashed vertical line (indicating a deadlock) is
+  present. (This happens because probe emission increases when a deadlock
+  occurs.)
+
 
 ### Simulation logs
 
