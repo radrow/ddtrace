@@ -119,9 +119,9 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 **Note:** the command above may take about one hour to finish (tested on Fedora
 42 running on 11th Gen Intel Core i7-1185G7 with **32GB of RAM**). For a less
 resource-intensive variant, run the command below instead (this one takes about
-10 minutes on the same machine). Note that we used the command above to obtain
-our results, thus the outputs of the following command might be less similar to
-the figures in the paper.
+10 minutes on the same machine; needs 10GB of available RAM). Note that we used
+the command above to obtain our results, thus the outputs of the following
+command might be less similar to the figures in the paper.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium

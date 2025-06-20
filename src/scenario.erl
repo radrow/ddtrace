@@ -394,8 +394,7 @@ run_bench(Bench, Opts) ->
     %% io:format("\n\nGEN: ~p\n\n", [Scens]),
     run_many(Bench, Opts).
 
-
--define(GRID_WIDTH, 50).
+-define(GRID_WIDTH, 39).
 grid_printer() ->
     print_legend(),
     receive {workers, Ws, MaxSize} -> grid_printer(Ws, MaxSize) end.

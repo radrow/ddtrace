@@ -24,9 +24,13 @@ ENV PATH="$ASDF_DIR/bin:$ASDF_DIR/shims:$PATH"
 # Install Erlang and Elixir
 RUN . $ASDF_DIR/asdf.sh \
  && asdf plugin add erlang https://github.com/asdf-vm/asdf-erlang.git \
- && asdf plugin add elixir https://github.com/asdf-vm/asdf-elixir.git \
+ && asdf plugin add elixir https://github.com/asdf-vm/asdf-elixir.git
+
+RUN . $ASDF_DIR/asdf.sh \
  && asdf install erlang 26.2.2 \
- && asdf install elixir 1.14 \
+ && asdf install elixir 1.14
+
+RUN . $ASDF_DIR/asdf.sh \
  && asdf global erlang 26.2.2 \
  && asdf global elixir 1.14
 
