@@ -6,7 +6,7 @@
 
 -export([type/1]).
 
--export([ log_terminate/0, log_deadlock/1
+-export([ log_terminate/0, log_deadlocks/1
         , log_scenario/2
         , log_timeout/0
         , log_trace/1, log_trace/2
@@ -177,8 +177,13 @@ c_probe(Probe) ->
 c_terminate() ->
     {[green_l, bold, underline, invert], "### TERMINATED ###"}.
 
-c_deadlock(N) ->
-    {[red_l, bold, underline, invert], "### DEADLOCKS (" ++ integer_to_list(N) ++ ") ###"}.
+c_deadlocks(DLs) ->
+    [ {[red_l, bold, underline, invert], "### DEADLOCKS (" ++ integer_to_list(length(DLs)) ++ ") ###"}
+    , case DLs of
+          [] -> "";
+          [DL|_] -> ["\t", c_lock_list(DL)]
+      end
+    ].
 
 c_timeout() ->
     {[white, bold, underline, invert], "### TIMEOUT ###"}.
@@ -235,8 +240,8 @@ log_scenario(Scenario, Time) ->
 log_terminate() ->
     print(c_terminate()).
 
-log_deadlock(N) ->
-    print(c_deadlock(N)).
+log_deadlocks(DLs) ->
+    print(c_deadlocks(DLs)).
 
 log_timeout() ->
     print(c_timeout()).
@@ -249,18 +254,24 @@ c_from({Tag, From, _Msg}) when is_atom(Tag) ->
 c_from({Tag, _Msg}) when is_atom(Tag) ->
     "".
 
+c_lock_list([]) ->
+    "";
+c_lock_list([First|L]) ->
+    [ "("
+    , c_who(First)
+    , [ [" -> ", c_who(Who)] || Who <- L]
+    , ")"
+    ].
+
 c_state(unlocked) ->
     {[green, bold, invert], " UNLOCK "};
 c_state({locked, On}) ->
     [{[red_l, bold, invert], " LOCK "}, " (", c_probe(On), ")"];
 c_state({deadlocked, foreign}) ->
     {[red, bold, underline, dim], "foreign deadlock"};
-c_state({deadlocked, [First|DL]}) ->
+c_state({deadlocked, DL}) ->
     [ {[red, bold, underline, invert], "### DEADLOCK ###\t"}
-    , "("
-    , c_who(First)
-    , [ [" -> ", c_who(Who)] || Who <- DL]
-    , ")"
+    , c_lock_list(DL)
     ].
 
 c_ev_data({query, _From, Msg}) ->

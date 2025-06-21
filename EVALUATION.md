@@ -112,7 +112,7 @@ More specifically, the generated output should satisfy these requirements:
 
 ## Reproducing the results from the paper
 
-### Reproducing the plots in Figures 15 and 16
+### Reproducing the plots in *Figures 15 and 16*
 
 To reproduce *Figures 15 and 16* in the paper, please run the following command.
 
@@ -200,7 +200,7 @@ should be able to observe the following trends (also visible in the paper):
   occurs.)
 
 
-### Reproducing the scenario execution logs in Appendix A - Listings 1, 2, 3, 4
+### Reproducing the scenario execution logs in Appendix A - *Listings 1, 2, 3, 4*
 
 The following instructions are for reproducing two deadlock detection test
 scenarios:
@@ -248,6 +248,9 @@ docker run --rm ddmon ./ddmon scenarios/envelope-small.conf
 
 Again, several runs might be needed to obtain each of the two possible outcomes
 ("terminated" and "deadlock").
+
+*NOTE:* In the paper, the captions of *Listings 3* and *4* are swapped. This
+is an error which we will fix.
 
 
 #### Running other deadlock detection scenarios
