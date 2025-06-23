@@ -3,10 +3,10 @@
 DDMon can monitor applications consisting of processes (written in Erlang or
 Elixir) based on the generic server (`gen_server`) behaviour. Intuitively, DDMon
 acts as a drop-in replacement for the `gen_server` behaviour of the OTP standard
-library. At this stage, DDMon supports only standard features of generic
-servers, i.e. the `call` and `cast` callbacks. Timeouts, deferred responses
-(`no_reply`) and pooled calls through `reqids` are not covered by the prototype
-yet.
+library. At this stage, DDMon supports only the most commonly used features of
+generic servers, i.e. the `call` and `cast` callbacks. Timeouts, deferred
+responses (`no_reply`) and pooled calls through `reqids` are not covered by the
+prototype yet.
 
 The current version of DDMon is instrumented as follows, depending on the
 language used to write each `gen_server` instance:
@@ -26,15 +26,22 @@ Below is an example of how DDMon is applied to a simple distributed system. We
 provide it not just for its sole evaluation, but also as a simple reference for
 custom experiments, which we encourage to try.
 
-### Example: microchip factory
+## Example: microchip factory
 
 We provide an example Elixir application in the `example-system` directory (see
 the [README](example-system/README.md)). The application implements a simple
-distributed system where two Producers (tagged 1 and 2) construct values and ask
-Inspectors (tagged 1 and 2 respectively) to "validate" their produce before it
-is returned to the caller. Inspectors 1 and 2 validate these values by comparing
-it to metadata provided by Producers 2 and 1 respectively (note that the id
-numbers are flipped).
+distributed system where Producers construct values and ask Inspectors to
+"validate" their produce before it is returned to the caller. Producers may call
+other Producers in order to construct return values to received calls.
+
+We implement two example interactions with this application.
+
+#### Small case
+
+This case includes two Producers (tagged 1 and 2) and two Inspectors (tagged 1
+and 2 as well). Inspectors 1 and 2 validate values produced by Producers 1 and 2
+respectively by comparing them to metadata provided by Producers 2 and 1
+respectively (note that the id numbers are flipped).
 
 There are two scenarios which may nondeterministically occur when the example
 application runs, depending on how the calls and responses between `gen_servers`
@@ -69,12 +76,10 @@ are scheduled: the run may complete successfully, or it may deadlock.
   deadlock has occurred. When this happens, the application will end with a
   **"Timeout"** message.
 
-#### Running the example
-
-To execute the example application, run the following command:
+To execute the application, run the following command:
 
 ```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_all"'
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
 ```
 
 If both Producers' calls receive a response, you should see a green **Success**
@@ -87,7 +92,18 @@ the deadlock is not detected. Moreover, since the deadlock is nondeterministic
 in the code), you may need to try several times before you can observe both
 outcomes described above.
 
-#### Instrumenting the example `gen_server`s with DDMon
+#### Large case
+
+This case illustrates a larger setup with 93 Producers and 3 Inspectors. Here,
+deadlocks may involve different services across different executions. To execute
+it, run the following command:
+
+
+```bash
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_many"'
+```
+
+### Instrumenting the example `gen_server`s with DDMon
 
 To instrument the example application with DDMon, edit the following files:
 
@@ -115,7 +131,8 @@ Now, you should rebuild the docker image:
 docker build -t ddmon .
 ```
 
-Now you can try rerunning the experiment several times:
+Now you can try rerunning the experiment several times (replace `start_two` with
+`start_many` to run the large experiment):
 
 ```bash
 docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
@@ -124,4 +141,4 @@ docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.s
 The **Success** output should look exactly as before. However, if the system
 deadlocks, you should see a red **Deadlock** message (instead of "Timeout"),
 followed by a list of PIDs: those are the PIDs of the processes involved in the
-deadlock.
+deadlock. Symbol `<==` marks a process that reported the deadlock.

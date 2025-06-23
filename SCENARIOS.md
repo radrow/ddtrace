@@ -39,7 +39,7 @@ following format:
 %%% - `{wait, X}` waits for `X` miliseconds
 %%% - `{wait, X, Y}` waits randomly between `X` and `Y` miliseconds
 %%% - `[]` does nothing
-%%% After all actions are executed, the service sends a reply.
+%%% After all actions are executed, the service sends a response.
 -type schedule()
     :: tuple(schedule())
     |  [proc_id() | schedule()]
@@ -130,12 +130,13 @@ The `<EVENT>` can be either of the following:
 - `X ! Q(s)` — Sent a query to `X` in session `s`
 - `X ! R(s)` — Sent a reply to `X` in session `s`
 - `%[ Q(s) ]` — Monitor handles an incoming query and forwards it to its service
-- `%[ R(s) ]` — Monitor handles an incoming reply and forwards it to its service
+- `%[ R(s) ]` — Monitor handles an incoming response and forwards it to its service
 - `%[ ?!Q(s) ]` — Monitor handles an outgoing query sent by its service
-- `%[ ?!R(s) ]` — Monitor handles an outgoing reply sent by its service
+- `%[ ?!R(s) ]` — Monitor handles an outgoing response sent by its service
 - `=> UNLOCK` — Monitor enters unlocked state
 - `=> LOCK(p)` — Monitor enters locked state and initiates probe `p`
-- `=> ### DEADLOCK ### DL` — Monitor observes a deadlock; `DL` shows the evidence cycle
+- `=> ### DEADLOCK ### DL` — Monitor observes a deadlock; `DL` shows the list of
+  services which form a deadlock
 - `=> foreign_deadlock` — Monitor learns that it is dependent on a deadlock
 - `release X` — message indicating that a worker of a replicated service has
   finished its task and is ready to receive a query (the encoding of replicated
@@ -169,18 +170,18 @@ following log: (the timestaps may vary)
 00:013:034	| M0:	I0 ! R(s)
 ```
 
-Here, the service `0` is programmed to reply to the initial call after a short
-delay. In more details:
+Here, the service `0` is programmed to response to the initial call after a
+short delay. In more details:
 
 1. Monitor of service `0` receives a call from the initiator of session `s`
 2. Monitor of service `0` picks the message from its inbox
 3. Monitor of service `0` forwards (sends) the message to the service `0`
 4. Service `0` receives the message
 5. Service `0` waits for 10 milliseconds
-6. Service `0` sends back a reply to its monitor
-7. Monitor of service `0` receives the reply from its service
-8. Monitor of service `0` picks the reply from its inbox
-9. Monitor of service `0` sends the reply back to the session initiator
+6. Service `0` sends back a response to its monitor
+7. Monitor of service `0` receives the response from its service
+8. Monitor of service `0` picks the response from its inbox
+9. Monitor of service `0` sends the response back to the session initiator
 
 ## Overview of provided scenarios
 
@@ -217,7 +218,7 @@ finish successfully:
 
 - Service `0` calls `1`, `1` calls `2`, `2` replies to `1`, `1` replies to `0`
 - Service `4` calls `3`, `3` calls `0` (optionally waiting for it to receive
-  reply from `1`), then `0` replies to `3`, and `3` replies to `4`
+  response from `1`), then `0` replies to `3`, and `3` replies to `4`
 
 ```erlang
 {sessions,
