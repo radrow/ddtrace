@@ -28,9 +28,9 @@
 %%%======================
 
 -record(state,{worker :: pid(),
-               req_tag :: gen_server:reply_tag(),
-               req_id :: gen_statem:request_id(),
-               waitees :: list(pid())
+               req_tag :: gen_server:reply_tag() | undefined,
+               req_id :: gen_statem:request_id() | undefined,
+               waitees :: gen_statem:request_id_collection()
               }).
 -record(deadstate,{worker :: pid(),
                    deadlock :: list(pid()),
