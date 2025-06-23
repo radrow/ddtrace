@@ -118,7 +118,7 @@ docker build -t ddmon .
 Now you can try rerunning the experiment several times:
 
 ```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_all"'
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
 ```
 
 The **Success** output should look exactly as before. However, if the system
