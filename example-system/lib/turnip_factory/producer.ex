@@ -1,6 +1,6 @@
 defmodule TurnipFactory.Producer do
   use GenServer
-  # alias :ddmon, as: GenServer
+  alias :ddmon, as: GenServer
 
   def start_link(turnip_metadata) do
     GenServer.start_link(__MODULE__, turnip_metadata, [])

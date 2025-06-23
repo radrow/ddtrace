@@ -1,6 +1,6 @@
 defmodule TurnipFactory.Inspector do
   use GenServer
-  # alias :ddmon, as: GenServer
+  alias :ddmon, as: GenServer
 
   def start_link(reference_turnip) do
     GenServer.start_link(__MODULE__, reference_turnip, [])
