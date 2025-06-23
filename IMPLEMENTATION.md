@@ -27,7 +27,7 @@ Elixir must satisfy two requirements:
   respectively); and
 - It must use the `ddmon:call/2,3` functions to perform calls to other monitored
   services.
-  
+
 This is necessary because the monitor needs to "wrap" the `gen_server` and
 intercept its calls, as required by the semantics of monitored services in
 Section 4 of the companion paper.
@@ -51,8 +51,8 @@ The following steps happen when a `gen_server` is started via `ddmon:start`:
 ### Operation of a monitored service
 
 The wrapped generic server is started through the `gen_monitored` module. This
-helps informing the service that it is monitored and is useful for integration
-with unmonitored components of the system.
+step not strictly needed, but is useful for integration with unmonitored
+components of the system and makes examples simpler.
 
 ### Operation of the monitor
 
@@ -135,10 +135,13 @@ combination of the state tracked by the `gen_statem` behaviour (`unlocked`,
 `locked`, `deadlocked`), plus the contents of a `state` record.
 
 | Paper             | DDMon implementation                                                               |
-+-------------------+------------------------------------------------------------------------------------+
+|-------------------|------------------------------------------------------------------------------------|
 | `probe` defined   | Monitor state machine is in the `locked` state + field `req_tag` in `state` record |
+|-------------------|------------------------------------------------------------------------------------|
 | `probe` undefined | Monitor state machine is in the `unlocked` state                                   |
+|-------------------|------------------------------------------------------------------------------------|
 | `waiting`         | Field `waitees` in `state` record                                                  |
+|-------------------|------------------------------------------------------------------------------------|
 | `alarm`           | Whether state machine is in `deadlocked` state                                     |
 
 We use `gen_server:reply_tag()` to implement probes. These tags are uniquely
@@ -153,11 +156,13 @@ conveniently manage the list of waiting services and provides us with a handle
 to properly forward responses.
 
 Rules from *Figure 12* in the companion paper are implemented by the state
-callbacks of `ddmon`. In addition to the behaviours described in the paper,
-monitors propagate information about observed deadlocks via responses of form
-`{?DEADLOCK, DL}` where `?DEADLOCK` is a constant defined in `ddmon.hrl` and
-`DL` is a minimal deadlocked set. This is helpful to terminate the system early
-in tests and investigate deadlocks.
+callbacks of `ddmon`.
+
+In addition to the behaviours described in the paper, monitors propagate
+information about observed deadlocks via responses of form `{?DEADLOCK, DL}`
+where `?DEADLOCK` is a constant defined in `ddmon.hrl` and `DL` is a deadlocked
+set. This feature is optional, but is helpful to terminate the system early in
+tests and investigate deadlocks.
 
 ## Testing scenarios
 
@@ -171,6 +176,7 @@ the scenario DSL, the visualisation of logs, supervision, and examples.
 - `src/scenario` — Entrypoint for benchmarks and tests. parses scenario files,
   applies preprocessing, runs experiments and handles results.
 - `src/logging.erl` — Visualisation of logs produced by the tracer.
-- `src/scenario_gen.erl` — Generator of large scenarios from generic schema.
+- `src/scenario_gen.erl` — Generator of large scenarios from pre-defined
+  templates. Used in large benchmarks.
 - `lib/test_server.ex` — Generic server evaluating the scenario DSL.
 - `lib/main.ex` — Command line interface for running scenarios.
