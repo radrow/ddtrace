@@ -82,7 +82,9 @@ start(Module, Args, Options) ->
                 Name when is_atom(Name) ->
                     gen_statem:start({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
                 {global, Name} ->
-                    gen_statem:start({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+                    gen_statem:start({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
+                {via, Reg, Name} ->
+                    gen_statem:start_link({via, Reg, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
             end
     end.
 
@@ -104,7 +106,9 @@ start_link(Module, Args, Options) ->
                 Name when is_atom(Name) ->
                     gen_statem:start_link({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
                 {global, Name} ->
-                    gen_statem:start_link({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+                    gen_statem:start_link({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
+                {via, Reg, Name} ->
+                    gen_statem:start_link({via, Reg, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
             end
     end.
 
@@ -309,7 +313,12 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
         {reply, {?DEADLOCK, DL}} ->
             %% Deadlock information
             [ begin
-                  gen_statem:reply(W, {?DEADLOCK, [self() | DL]})
+                  PassDL =
+                      case lists:member(self(), DL) of
+                          true -> DL;
+                          false -> [self() | DL]
+                      end,
+                  gen_statem:reply(W, {?DEADLOCK, PassDL})
               end
               || {_, W} <- gen_statem:reqids_to_list(Waitees)
             ],

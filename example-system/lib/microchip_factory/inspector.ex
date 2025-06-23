@@ -2,7 +2,7 @@ defmodule MicrochipFactory.Inspector do
   use GenServer
   # alias :ddmon, as: GenServer
 
-  def start_link(reference_microchip, name) do
+  def start_link(name, reference_microchip) do
     GenServer.start_link(__MODULE__, {reference_microchip, name}, name: name)
   end
 
@@ -25,8 +25,11 @@ defmodule MicrochipFactory.Inspector do
     end
   end
 
+  def format({:via, _, {_, name}}) do
+    format(name)
+  end
   def format(name) do
-    "\e[34;1mInspector #{name}\e[0m"
+    "\e[34;1mInspector #{inspect name}\e[0m"
   end
 
   defp log(state, str) do
@@ -36,6 +39,6 @@ defmodule MicrochipFactory.Inspector do
   ### Interface
 
   def inspect_microchip(name, microchip) do
-    GenServer.call(name, {:inspect_microchip, microchip})
+    GenServer.call(name, {:inspect_microchip, microchip}, :infinity)
   end
 end

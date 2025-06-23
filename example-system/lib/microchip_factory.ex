@@ -1,35 +1,24 @@
 defmodule MicrochipFactory do
 
   def start_two do
-    {:ok, _prod1} = MicrochipFactory.Producer.start_link(3, [], :prod1)
-    {:ok, _prod2} = MicrochipFactory.Producer.start_link(5, [], :prod2)
+    Registry.start_link(keys: :unique, name: :factory)
 
-    {:ok, _insp1} = MicrochipFactory.Inspector.start_link(:prod1, :insp1)
-    {:ok, _insp2} = MicrochipFactory.Inspector.start_link(:prod2, :insp2)
+    {:ok, _prod1} = MicrochipFactory.Producer.start_link({:via, Registry, {:factory, :prod1}}, 3, [])
+    {:ok, _prod2} = MicrochipFactory.Producer.start_link({:via, Registry, {:factory, :prod2}}, 5, [])
 
-    reqid1 = :gen_server.send_request(:prod1, {:produce_microchip, :insp2})
-    :timer.sleep(:rand.uniform(500))
-    reqid2 = :gen_server.send_request(:prod2, {:produce_microchip, :insp1})
+    {:ok, _insp1} = MicrochipFactory.Inspector.start_link(
+      {:via, Registry, {:factory, :insp1}},
+      {:via, Registry, {:factory, :prod1}}
+    )
+    {:ok, _insp2} = MicrochipFactory.Inspector.start_link(
+      {:via, Registry, {:factory, :insp2}},
+      {:via, Registry, {:factory, :prod2}}
+    )
 
-    resp1 = :gen_server.receive_response(reqid1, 1000)
-    resp2 = :gen_server.receive_response(reqid2, 1000)
-
-    result = case {resp1, resp2} do
-               {{:reply, {:"$ddmon_deadlock_spread", dl}}, _} -> {:deadlock, dl}
-               {_, {:reply, {:"$ddmon_deadlock_spread", dl}}} -> {:deadlock, dl}
-               {{:reply, resp1}, {:reply, resp2}} -> {:success, resp1, resp2}
-               {:timeout, _} -> :timeout
-               {_, :timeout} -> :timeout
-             end
-
-    case result do
-      {:deadlock, dl} ->
-        IO.puts("\e[31;1mDeadlock\e[0m: #{inspect dl}")
-      {:success, resp1, resp2} ->
-        IO.puts("\e[32;1mSuccess\e[0m: got #{inspect resp1}, #{inspect resp2}")
-      :timeout ->
-        IO.puts("\e[33;1mTimeout\e[0m")
-    end
+    calls = [{{:via, Registry, {:factory, :prod1}}, {:via, Registry, {:factory, :insp2}}},
+             {{:via, Registry, {:factory, :prod2}}, {:via, Registry, {:factory, :insp1}}}
+            ]
+    do_calls(calls, 1000)
   end
 
   def start_many do
@@ -38,34 +27,103 @@ defmodule MicrochipFactory do
     # How long a single cascade of calls should be
     session_size = 30
     # At what point a session should clash with another
-    session_cut = 25
+    session_cut = 26
 
     # Create Producers
-    prods = for idx <- 0..session_len, sess <- [:a, :b, :c], into: %{} do
+    _prods = for idx <- 0..session_size, sess <- [:a, :b, :c], into: %{} do
       name = {:via, Registry, {:factory, {:prod, sess, idx}}}
-      prod = MicrochipFactory.Producer.start_link(21, name)
+
+      components = if idx == session_size do
+        []
+      else
+        [{:via, Registry, {:factory, {:prod, sess, idx + 1}}}]
+      end
+
+      prod = MicrochipFactory.Producer.start_link(name, 21, components)
       {{sess, idx}, prod}
     end
 
     # Create inspectors
-    insps = for idx <- 0..session_len, sess <- [:a, :b, :c], into: %{} do
-      {next_sess, next_idx} =
-        case idx == session_len do
-          true ->
-            # If we reach the end of a stream, attack
-            next_sess = case sess do
-                          :a -> :b
-                          :b -> :c
-                          :c -> :a
-                        end
-            {next_sess, session_cut}
-          false ->
-            {sess, idx + 1}
-        end
-      prod = {:via, Registry, {:factory, {:prod, next_sess, next_idx}}}
-      name = {:via, Registry, {:factory, {:insp, sess, idx}}}
-      insp = MicrochipFactory.Inspector.start_link(prod, name)
+    _insps = for sess <- [:a, :b, :c] do
+      name = {:via, Registry, {:factory, {:insp, sess}}}
+
+      next_sess = case sess do
+                    :a -> :b
+                    :b -> :c
+                    :c -> :a
+                  end
+
+      prod_ref = {:via, Registry, {:factory, {:prod, next_sess, session_cut}}}
+      MicrochipFactory.Inspector.start_link(name, prod_ref)
     end
+
+    calls = for sess <- [:a, :b, :c] do
+      {{:via, Registry, {:factory, {:prod, sess, 0}}},
+       {:via, Registry, {:factory, {:insp, sess}}}
+      }
+    end
+
+    do_calls(calls, 4000)
   end
 
+
+  ### Printing and initiating
+
+  defp do_calls(calls, timeout) do
+    reqids = for {prod, insp} <- calls do
+      :timer.sleep(:rand.uniform(80 * length(calls)))
+      :gen_server.send_request(prod, {:produce_microchip, insp})
+    end
+
+    resps = for reqid <- reqids do
+      :gen_server.receive_response(reqid, timeout)
+    end
+
+    result = case Enum.find(resps, fn
+                   {:reply, {:"$ddmon_deadlock_spread", _}} -> true
+                   _ -> false
+                 end) do
+               {:reply, {:"$ddmon_deadlock_spread", dl}} -> {:deadlock, dl}
+               _ ->
+                 if Enum.member?(resps, :timeout) do
+                   :timeout
+                 else
+                   resps = for {:reply, resp} <- resps do
+                     resp
+                   end
+                   {:success, resps}
+                 end
+             end
+
+    print_result(result)
+  end
+
+  defp print_result(result) do
+    case result do
+      {:deadlock, dl} ->
+        IO.puts("\e[31;1mDeadlock\e[0m:")
+        dl = for p <- dl do
+          case Registry.keys(:factory, p) do
+            [] -> p
+            [name|_] -> name
+          end
+        end
+
+        duplicates = dl
+        |> Enum.group_by(& &1)
+        |> Enum.filter(fn {_k, v} -> length(v) > 1 end)
+        |> Enum.map(fn {k, _v} -> k end)
+
+        for p <- dl do
+          case Enum.member?(duplicates, p) do
+            true -> IO.puts "- \e[31;1m#{inspect p} <==\e[0m"
+            false -> IO.puts "- #{inspect p}"
+          end
+        end
+      {:success, resps} ->
+        IO.puts("\e[32;1mSuccess\e[0m: got #{inspect resps}")
+      :timeout ->
+        IO.puts("\e[33;1mTimeout\e[0m")
+    end
+  end
 end
