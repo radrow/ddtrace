@@ -1,5 +1,3 @@
-
-
 # Using DDMon to monitor a `gen_server`-based application
 
 DDMon can monitor applications consisting of processes (written in Erlang or
@@ -28,7 +26,7 @@ Below is an example of how DDMon is applied to a simple distributed system. We
 provide it not just for its sole evaluation, but also as a simple reference for
 custom experiments, which we encourage to try.
 
-### Example: turnip factory
+### Example: microchip factory
 
 We provide an example Elixir application in the `example-system` directory (see
 the [README](example-system/README.md)). The application implements a simple
@@ -76,7 +74,7 @@ are scheduled: the run may complete successfully, or it may deadlock.
 To execute the example application, run the following command:
 
 ```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "TurnipFactory.start_all"'
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_all"'
 ```
 
 If both Producers' calls receive a response, you should see a green **Success**
@@ -93,19 +91,19 @@ outcomes described above.
 
 To instrument the example application with DDMon, edit the following files:
 
-- `example-system/lib/turnip_factory/producer.ex`
-- `example-system/lib/turnip_factory/inspector.ex`
+- `example-system/lib/microchip_factory/producer.ex`
+- `example-system/lib/microchip_factory/inspector.ex`
 
 In each uncomment the *line 3*. For example, `producer.ex` should begin as
 follows:
 
 ```elixir
-defmodule TurnipFactory.Producer do
+defmodule MicrochipFactory.Producer do
   use GenServer
   alias :ddmon, as: GenServer
 
-  def start_link(turnip_metadata) do
-    GenServer.start_link(__MODULE__, turnip_metadata, [])
+  def start_link(microchip_metadata) do
+    GenServer.start_link(__MODULE__, microchip_metadata, [])
   end
 
   ...
@@ -120,7 +118,7 @@ docker build -t ddmon .
 Now you can try rerunning the experiment several times:
 
 ```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "TurnipFactory.start_all"'
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_all"'
 ```
 
 The **Success** output should look exactly as before. However, if the system

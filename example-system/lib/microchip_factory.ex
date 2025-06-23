@@ -1,15 +1,15 @@
-defmodule TurnipFactory do
+defmodule MicrochipFactory do
   def start_all do
 
-    {:ok, prod1} = TurnipFactory.Producer.start_link(3)
-    {:ok, prod2} = TurnipFactory.Producer.start_link(5)
+    {:ok, prod1} = MicrochipFactory.Producer.start_link(3)
+    {:ok, prod2} = MicrochipFactory.Producer.start_link(5)
 
-    {:ok, insp1} = TurnipFactory.Inspector.start_link(prod1)
-    {:ok, insp2} = TurnipFactory.Inspector.start_link(prod2)
+    {:ok, insp1} = MicrochipFactory.Inspector.start_link(prod1)
+    {:ok, insp2} = MicrochipFactory.Inspector.start_link(prod2)
 
-    reqid1 = :gen_server.send_request(prod1, {:produce_turnip, insp2})
+    reqid1 = :gen_server.send_request(prod1, {:produce_microchip, insp2})
     :timer.sleep(:rand.uniform(500))
-    reqid2 = :gen_server.send_request(prod2, {:produce_turnip, insp1})
+    reqid2 = :gen_server.send_request(prod2, {:produce_microchip, insp1})
 
     resp1 = :gen_server.receive_response(reqid1, 1000)
     resp2 = :gen_server.receive_response(reqid2, 1000)
