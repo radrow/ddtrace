@@ -126,7 +126,7 @@ callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback
   Therefore, in the implementation, `ddmon` simply sends such probes
   sequentially.
 
-#### Implementation of the deadlock detecting monitoring algorithm
+#### Implementation of the deadlock monitoring algorithm
 
 In the companion paper (Section 5) we formalise the monitor state as a record
 with three fields. These fields correspond to the `ddmon` implementation as
