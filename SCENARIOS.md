@@ -137,7 +137,9 @@ The `<EVENT>` can be either of the following:
 - `=> ### DEADLOCK ### DL` — Monitor observes a deadlock; `DL` shows the evidence cycle
 - `=> foreign_deadlock` — Monitor learns that it is dependent on a deadlock
 - `release X` — message indicating that a worker of a replicated service has
-  finished its task and is ready to receive a query
+  finished its task and is ready to receive a query (the encoding of replicated
+  services in our formal model is described in *Appendix B* of the companion
+  paper)
 - `waiting N ms` — process is waiting `N` milliseconds
 
 Erlang processes are identified as follows:
@@ -145,9 +147,9 @@ Erlang processes are identified as follows:
 - `I0` — the session initiator
 - `Px` — service `x` (`P` stands for "process": each service is an Erlang
   process)
-- `Px(y)` — worker `y` of the replicated service `x` (this is based on the
-  encoding of replicated services in our formal model, which is described in
-  *Appendix B* of the companion paper)
+- `Px(y)` — worker `y` of the replicated service `x` (the encoding of replicated
+  services in our formal model is described in *Appendix B* of the companion
+  paper)
 - `Mx` — monitor of the service `x`
 - `Mx(y)` — monitor of the worker `y` of the replicated service `x`
 
