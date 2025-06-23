@@ -1,23 +1,25 @@
-# DDMon test scenarios
+# DDMon testing DSL and test scenarios
 
-We test DDMon's performance and correctness in different settings involving
-various forms of deterministic and non-deterministic deadlocks, as well as
-executions that terminate successfully. Each such test is described as a
-"scenario" which declares a number of idle services which are then commanded to
-communicate with each other in a specific manner.
+We test DDMon's performance and correctness in different test scenarios
+involving various forms of deterministic and non-deterministic deadlocks, as
+well as executions that terminate successfully. Each one of such test scenarios
+is described as a "scenario file" written in a domain-specific language (DSL)
+which declares a number of services and then commands them to communicate with
+each other in a specific manner (possibly leading to a deadlock).
 
-Execution of a scenario begins with a number of initial calls to selected
-services. How services handle these calls is described in the call data itself.
-In other words, every call contains precise instructions on how it is supposed
-to be processed, including making further calls, waiting, or replying. This way
-a single `gen_server` implementation can be reused to replicate arbitrary
-deadlocks that occur in real systems.
+The execution of a test scenario begins with a number of initial `gen_server`
+calls (a.k.a. queries, in the terminology of the companion paper) to selected
+services. The data transmitted in each call contains instructions on how the
+data is supposed to be processed, including making further calls, waiting, or
+sending a response. This way a single `gen_server` instance created by the
+testing DSL can reproduce a variety of possible behaviours and deadlocks that
+may occur in real systems.
 
-See *Appendix A.1* of the paper for additional information.
+See *Appendix A.1* of the companio paper for additional information.
 
 ## Scenario file format
 
-A scenario is specified as an Erlang `conf` file which roughly follows the
+A test scenario is specified as an Erlang `conf` file which roughly follows the
 following format:
 
 ```erlang
@@ -60,13 +62,15 @@ following format:
 
 ### Example
 
-The following example pictures a scenario of 4 services (`0`, `1`, `2` and `3`)
-involved in two independent sessions (`left` and `rite`). `left` begins with a
-call to the service `0`, which will call `1` for an immediate reply, wait for 50
-milliseconds and then call `1` again. `rite` starts in parallel with a call to
-`3` which immediately calls `2`. Upon receiving a request, `2` will first wait
-for some time randomly between 0 and 100 milliseconds before calling `1`, which
-should then call `0`.
+The following example pictures a scenario of 4 services (numbered `0`, `1`, `2`
+and `3`) involved in two independent sessions (`left` and `right`).
+
+- `left` begins with a call to the service `0`, which will call `1` for an
+  immediate reply, wait for 50 milliseconds, and then call `1` again.
+
+- `right` starts in parallel with a call to `3` which immediately calls `2`.
+  Upon receiving the call, `2` will first wait for some random time between 0
+  and 100 milliseconds, and then call `1`, which will then call `0`.
 
 ```erlang
 {sessions,
@@ -78,7 +82,7 @@ should then call `0`.
       }
     }
    }
- , {rite,
+ , {right,
     { 3
     , [2, {wait, 0, 100}, 1, 0]
     }
@@ -87,32 +91,38 @@ should then call `0`.
 }.
 ```
 
-A deadlock may occur depending on how long `2` will wait. If it waits long
-enough for `left` to terminate, `1` will not be blocked and everything will
-resolve by `0` replying to `1`, `1` to `2`, `2` to `3` and `3` finishing the
-session. If `2` does not wait, it may block `1` expecting a reply from `0` while
-session `left` blocks `0` until `1` is unblocked, implying a deadlock.
+A deadlock may occur depending on how long service `2` will wait after receiving
+a call from `3`:
+
+- If `2` waits long enough for `left` to terminate, then `1` will not be blocked
+  and the scenario will terminate with `0` sending a response to `1`, `1` to
+`2`, `2` to `3` and `3` finishing the session.
+- Instead, if `2` does not wait long enough, then `2` may block `1` expecting a
+  reply from `0` while session `left` blocks `0` until `1` is unblocked,
+  implying a deadlock.
 
 ## Reading the log
 
 Unless `--silent` is set, `ddmon` will print out a coloured log of certain
-events happening in the system. By default, the output is formatted in multiple
-columns (one for each service) --- this can be turned off by setting
+events happening in the system.
+
+By default, the output is formatted in multiple columns (one for each service
+running in the scenario); this column formatting can be turned off by setting
 `--indent=0`.
 
-The entries are presented in the format
+The entries in the log are presented in the format:
 
 ```
-TIMESTAMP | WHO: EVENT |       |  ...
+<TIMESTAMP> | <WHO>: <EVENT> |       |  ...
 ```
 
-Where
+Where:
 
-- `TIMESTAMP` is the timestamp of an event
-- `WHO` is the process that reported the event
-- `EVENT` describes the event
+- `<TIMESTAMP>` is the timestamp of an event
+- `<WHO>` is the process that reported the event
+- `<EVENT>` describes the event
 
-The `EVENT` can be either of the following:
+The `<EVENT>` can be either of the following:
 
 - `X ? Q(s)` — Received a query from `X` in session `s`
 - `X ? R(s)` — Received a response from `X` in session `s`
@@ -133,12 +143,16 @@ The `EVENT` can be either of the following:
 Erlang processes are identified as follows:
 
 - `I0` — the session initiator
-- `Px` — service `x`
-- `Px(y)` — worker `y` of the replicated service `x`
+- `Px` — service `x` (`P` stands for "process": each service is an Erlang
+  process)
+- `Px(y)` — worker `y` of the replicated service `x` (this is based on the
+  encoding of replicated services in our formal model, which is described in
+  *Appendix B* of the companion paper)
 - `Mx` — monitor of the service `x`
 - `Mx(y)` — monitor of the worker `y` of the replicated service `x`
 
-For example, the provided `supersimple` scenario produces the following log:
+For example, the provided scenario `scenarios/supersimple.conf` produces the
+following log: (the timestaps may vary)
 
 ```
 00:000:020	| M0:	I0 ? Q(s)
@@ -168,11 +182,11 @@ delay. In more details:
 ## Overview of provided scenarios
 
 Below we provide descriptions of other scenarios that we used in testing. All
-are to be found in the `scenarios` directory as `.conf` files.
+can be found in the `scenarios` directory as `.conf` files.
 
 #### `supersimple`
 
-Mock-test with only one service that just replies to the initial call.
+Simple test with only one service that just replies to the initial call.
 
 ```erlang
 {sessions, [ {s, {0, [{wait, 10}]}} ] }.
@@ -180,7 +194,8 @@ Mock-test with only one service that just replies to the initial call.
 
 #### `deadlock`
 
-Certain deadlock where service `0` calls service `1`, `1` calls `2` and `2` calls `0` making a loop.
+Scenario modelling a certain deadlock where service `0` calls service `1`, `1`
+calls `2` and `2` calls `0`, creating a locked-on dependency loop.
 
 ```erlang
 {sessions,
@@ -194,8 +209,8 @@ Certain deadlock where service `0` calls service `1`, `1` calls `2` and `2` call
 
 #### `nodeadlock`
 
-Certain termination (i.e. no deadlock), where two parallel sessions finish
-successfully:
+Scenario that always terminates without deadlocking. Two parallel sessions
+finish successfully:
 
 - Service `0` calls `1`, `1` calls `2`, `2` replies to `1`, `1` replies to `0`
 - Service `4` calls `3`, `3` calls `0` (optionally waiting for it to receive
@@ -207,7 +222,7 @@ successfully:
           , [1, 2]
           }
    }
- , {rite, { 4
+ , {right, { 4
           , [3, 0]
           }
    }
@@ -217,19 +232,27 @@ successfully:
 
 #### `random`
 
-Approximately 50% chances to deadlock or not.
+Approximately 50% chances to deadlock or not. (This scenario is also described
+in the "Example" section above.)
 
-This starts two independent sessions: `left` and `rite` with 3 services. `left`
-begins with a call to the service `0`, which will wait for 50 milliseconds and
-then call `1`, which then should reply immediately. `rite` starts in parallel
-with a call to `2` which waits for some time randomly between 0 and 100
-milliseconds before calling `1`, which should then call `0`.
+This scenario starts two independent sessions: `left` and `right` with 3
+services.
 
-A deadlock may occur depending on how long `2` will wait. If it waits long
-enough for `left` to terminate, `1` will not be blocked and everything will
-resolve by `0` replying to `1`, `1` to `2`, and `2` finishing the session. If
-`2` does not wait long enough, it may block `1` expecting a reply from `0` while
-session `left` blocks `0` until `1` is unblocked, implying a deadlock.
+- `left` begins with a call to the service `0`, which will wait for 50
+  milliseconds and then call `1`, which then responds immediately.
+
+- `right` starts in parallel with a call to `2` which waits for some time
+  randomly between 0 and 100 milliseconds, then calls `1`, which then calls `0`.
+
+A deadlock may occur depending on how long `2` waits:
+
+- If `2` waits long enough for `left` to terminate, then `1` will not be blocked
+  and the scenario terminates `0` responding to `1`, `1` to `2`, and `2`
+  finishing the session.
+
+- If `2` does not wait long enough, then `2` may block `1` expecting a response
+  from `0` while session `left` blocks `0` until `1` is unblocked, implying a
+  deadlock.
 
 ```erlang
 {sessions,
@@ -237,7 +260,7 @@ session `left` blocks `0` until `1` is unblocked, implying a deadlock.
           , [{wait, 50}, 1]
           }
    }
- , {rite, { 2
+ , {right, { 2
           , [{wait, 0, 100}, 1, 0]
           }
    }
@@ -247,11 +270,11 @@ session `left` blocks `0` until `1` is unblocked, implying a deadlock.
 
 #### `routing`
 
-An example of a replicated service implemented as in *Appendix B*. Here, service
-`0` has two workers (`{router, {0, 2}}`). The session begins with service `1`
-calling `0`, which then calls service `2`, which calls `0` again. Normally, this
-would cause a dependency cycle, but because `0` schedules tasks between two
-workers, deadlock is avoided.
+An example of a replicated service implemented as described in *Appendix B*.
+Here, service `0` has two workers (`{router, {0, 2}}`). The session begins with
+service `1` calling `0`, which then calls service `2`, which calls `0` again.
+Without replication, this scenario would cause a deadlock; however, since
+service `0` schedules queries between two workers, the deadlock is avoided.
 
 ```erlang
 {router, {0, 2}}.
@@ -265,9 +288,10 @@ workers, deadlock is avoided.
  ]
 }.
 ```
+
 #### `seq`
 
-Service `0` calls `1` which immediately replies. Then, `0` waits for 3
+Service `0` calls `1` which immediately sends a response. Then, `0` waits for 3
 milliseconds and calls `1` again, but this time `1` waits for between 10-50
 milliseconds and calls service `2` twice, after which it replies back to `0`.
 Finally, `0` calls `1` again.
@@ -291,9 +315,10 @@ times.
 
 #### `reply_and_dead`
 
-Service `0` calls `1` which replies immediately. Then, `0` calls `1` again, but this time `1` calls `0` causing a deadlock.
+Service `0` calls `1` which responds immediately. Then, `0` calls `1` again, but
+this time `1` calls `0` causing a deadlock.
 
-This scenario covers a case where a deadlock occurs along replies to some
+This scenario covers a case where a deadlock occurs along responses to some
 previous queries.
 
 ```erlang
