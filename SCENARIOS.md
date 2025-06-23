@@ -1,11 +1,12 @@
 # DDMon testing DSL and test scenarios
 
-We test DDMon's performance and correctness in different test scenarios
-involving various forms of deterministic and non-deterministic deadlocks, as
-well as executions that terminate successfully. Each one of such test scenarios
-is described as a "scenario file" written in a domain-specific language (DSL)
-which declares a number of services and then commands them to communicate with
-each other in a specific manner (possibly leading to a deadlock).
+In *Section 7* of the companion paper we evaluate DDMon's performance in
+different test scenarios involving various forms of deterministic and
+non-deterministic deadlocks, as well as executions that terminate successfully.
+Each one of such test scenarios is described as a "scenario file" written in a
+domain-specific language (DSL) which declares a number of services and then
+specifies how they exchange queries and responses with each other (possibly
+leading to a deadlock).
 
 The execution of a test scenario begins with a number of initial `gen_server`
 calls (a.k.a. queries, in the terminology of the companion paper) to selected
