@@ -1,34 +1,52 @@
-# Implementation overview
+# DDMon Implementation overview
 
-The project implemented mainly in Erlang and is built using
+DDMon is implemented mainly in Erlang and is built using
 [Mix](https://hexdocs.pm/elixir/introduction-to-mix.html). The overall structure
-is standard:
+is rather standard for Erlang projects:
 
 - `mix.exs` — project configuration
 - `src/` — Erlang code
 - `lib/` — Elixir code
 
-## Algorithm for distributed deadlock detection
+## Algorithm for distributed deadlock detection monitoring
 
 Files of concern:
 
-- `src/ddmon.erl` — implementation of the algorithm
+- `src/ddmon.erl` — implementation of the monitoring algorithm described in
+  Section 5 of the companion paper
 - `src/ddmon.hrl` — common macros
-- `src/gen_monitored.erl` — auxiliary layer between monitors and `gen_server`
-  services
+- `src/gen_monitored.erl` — auxiliary layer between our deadlock monitors and
+  `gen_server` services
 
 ### Startup
 
-To launch a generic server as a monitored service, call `ddmon:start` instead of
-`gen_server:start` (or `start_link` respectively). The following things happen
-when a service is started this way:
+To be launched as a monitored service, a `gen_server` written in Erlang or
+Elixir must satisfy two requirements:
+
+- It must call `ddmon:start` instead of `gen_server:start` (or `start_link`,
+  respectively); and
+- It must use the `ddmon:call/2,3` functions to perform calls to other monitored
+  services.
+  
+This is necessary because the monitor needs to "wrap" the `gen_server` and
+intercept its calls, as required by the semantics of monitored services in
+Section 4 of the companion paper.
+
+(In the case of `gen_server`s written in Elixir, both requirements are satisfied
+by defining a simple alias, as discussed in the file [EXAMPLE.md](EXAMPLE.md)).
+
+The following steps happen when a `gen_server` is started via `ddmon:start`:
 
 - First, a `ddmon` monitor is started. If a process name has been provided, the
   monitor will use it.
+
 - During `ddmon` process initialisation, the original `gen_server` is started
-  with the provided parameters (except name). The `gen_server` process is linked
-  to the monitor.
-- The PID of the monitor is returned.
+  with the provided parameters (except the name). The `gen_server` process is
+  linked to the monitor, and its PID is never revealed outside the monitor. As a
+  result, the original `gen_server` process is "wrapped" by the monitor.
+
+- The PID of the monitor (not the original `gen_server`'s) is returned to the
+  caller of `ddmon:start`.
 
 ### Operation of a monitored service
 
@@ -36,39 +54,38 @@ The wrapped generic server is started through the `gen_monitored` module. This
 helps informing the service that it is monitored and is useful for integration
 with unmonitored components of the system.
 
-It is important that the service uses the `ddmon` module to perform calls to
-other monitored services. This is because the `ddmon:call/2,3` function
-redirects such calls into call requests towards the monitor, enabling
-encapsulation required by the semantics of monitored services.
-
 ### Operation of the monitor
 
-The monitor is implemented as a generic state machine (`gen_statem`) with three
-states: `unlocked`, `locked` and `deadlocked`. It reacts to incoming calls
-mimicking the `gen_server` interface. Such calls are forwarded to the monitored
-service as non-blocking `gen_server` calls (via `gen_server:send_request`). The
-monitor then actively waits for either a response or external call requests from
-the service, while handling other incoming calls and probes. Probes are
-communicated via `cast` messages. All unrecognised communication is forwarded
-as-is.
+The monitor is implemented as a generic state machine (`gen_statem` behaviour)
+with three states: `unlocked`, `locked` and `deadlocked`. The state machine
+reacts to incoming calls mimicking the `gen_server` interface. Such calls are
+forwarded to the monitored service as non-blocking `gen_server` calls (via
+`gen_server:send_request`). The monitor then waits for either a response or
+external call requests from the service, while handling other incoming calls and
+probes. Probes are communicated via `cast` messages. All unrecognised
+communication is forwarded as-is.
 
-#### Relating implementation to the semantics of monitored services (*Figure 9*)
+#### Implementation to the semantics of monitored services
 
-The following refer to [state
+This section connects our monitor implementation to the theory of monitor
+instrumentation in *Section 4* of the companion paper --- specifically, the
+semantic rules in *Figure 9*. The following outline refers to the [state
 callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback)
 (`unlocked`, `locked`, `deadlocked`) implemented in `src/ddmon.erl`.
 
 - Rules `MON-I`, `MON-TO` and `MON-MI` are part of the Erlang runtime system as
   receiving messages (`call` and probe `cast` respectively).
-- `MON-TI` specifies how the monitor reacts to incoming messages:
+
+- Rule `MON-TI` specifies how the monitor reacts to incoming messages:
   - If the message is an incoming query, then it is handled as `{call, From}`
     where `From` points to a foreign service (i.e. not the one supervised by the
     monitor).
   - If the message is a response, then it appears as `info` ("miscellaneous
     message"). If the monitor is locked, it compares it to the current request
     id to distinguish it from other messages.
-- `MON-O` triggers when an outgoing message is forwarded. In `ddmon`, this is
-  handled in two variants:
+
+- Rule `MON-O` triggers when an outgoing message is forwarded. In `ddmon`, this
+  is handled in two possible ways:
   - If the message is a response, then it is handled as an `info` callback. The
     monitor keeps track of currently processed requests and is able to recognise
     outgoing responses using `gen_statem:check_response`.
@@ -82,8 +99,9 @@ callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback
       received.
     - `Msg` is the original message to be forwarded
     - `Server` is the intended recipient of the call
-- Rule `MON-TMI` describes how a probe is handled. In `ddmon`, probes are `cast`
-  messages of form `{?PROBE, Probe, Chain}`, where
+
+- Rule `MON-TMI` describes how a probe is handled. In `ddmon`, probes are
+  implemented as `cast` messages of the form `{?PROBE, Probe, Chain}`, where;
   - `?PROBE` is a constant Erlang atom defined in `src/ddmon.hrl`.
   - `Probe` is a unique `gen_server` call reference created when the initiator
     of the probe sent its request.
@@ -91,11 +109,13 @@ callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback
     When a deadlock is reported, this list shows a minimal deadlocked set. This
     component is not part of the theory, but is mentioned in the paper in
     *Section 7.1*.
-- In Rules `MON_TI`, `MON-O` and `MON-TMI` a sequence of messages yielded by the
-  algorithm is prepended to the monitor queue. In case of this algorithm, these
-  are always outgoing probes which are scheduled to be sent before any other
-  message is handled. In the paper, this significantly simplified the syntax. In
-  the implementation, `ddmon` simply sends these messages sequentially.
+
+- In rules `MON_TI`, `MON-O` and `MON-TMI` a sequence of messages yielded by the
+  algorithm is prepended to the monitor queue; in our algorithm (See *Section
+  5*), this sequence of messages can only contain outgoing probes which are
+  scheduled to be sent before any other message is handled by the monitor.
+  Therefore, in the implementation, `ddmon` simply sends such probes
+  sequentially.
 
 #### Relating implementation to the deadlock detecting algorithm
 
