@@ -4,11 +4,21 @@ DDMon is a deadlock monitoring tool for Erlang and Elixir programs based on the
 `gen_server` behaviour.
 
 This document contains prerequisites and instructions for building and running
-DDMon locally.
+DDMon.
 
 **NOTE:** To evaluate the OOPSLA'25 artifact, you can use a Docker-based setup
-for DDMon, instead of a local build. In this case, you can skip this file and
-move directly to the instructions in [EVALUATION.md](EVALUATION.md).
+for DDMon, instead of performing a local build. In this case, you can skip this
+file and move directly to the instructions in the following files:
+
+- [EVALUATION.md](EVALUATION.md) for setting up the Docker image and reproducing
+  the plots and listings in the companion paper.
+- [EXAMPLE.md](EXAMPLE.md) to see how DDMon can be applied to examples beyond
+  those in the companion paper.
+- [SCENARIOS.md](SCENARIOS.md) for the documentation of the testing DSL used in
+  the paper to benchmark DDMon to various randomised scenarios of varying size.
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) for details about the DDMon
+  implementation and how it connects to the theory and results in the companion
+  paper.
 
 **NOTE:** The following instructions are tested on GNU/Linux (Ubuntu 24.04 and
 Fedora 42).
@@ -16,8 +26,8 @@ Fedora 42).
 
 ## Prerequisites
 
-- [OTP/Erlang](https://www.erlang.org/), at least version `26`
-- [Elixir](https://elixir-lang.org/), at least version `1.14`
+- [Erlang/OTP](https://www.erlang.org/), version `26` or higher
+- [Elixir](https://elixir-lang.org/), version `1.14` or higher
 - [Mix](https://hexdocs.pm/mix/Mix.html)
 - [Python 3](https://www.python.org/) with [numpy](https://numpy.org/),
   [pandas](https://pandas.pydata.org/) and [matplotlib](https://matplotlib.org/)
@@ -68,7 +78,7 @@ mix escript.build
 
 ## Usage
 
-DDMon serves as a drop-in replacement for Erlang and Elixir generic server
+DDMon serves as a drop-in replacement for Erlang and Elixir's generic server
 behaviour (`gen_server`). To use it, include the contents of the [src/](src/)
 directory in your project and replace all references to `gen_server` or
 `GenServer` with `ddmon`.
