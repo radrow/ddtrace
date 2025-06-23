@@ -95,13 +95,15 @@ outcomes described above.
 #### Large case
 
 This case illustrates a larger setup with 93 Producers and 3 Inspectors. Here,
-deadlocks may involve different services across different executions. To execute
+deadlocks may involve different services across different executions. To evaluate
 it, run the following command:
 
 
 ```bash
 docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_many"'
 ```
+
+Again, several tries may be needed to reproduce deadlocks and successful executions.
 
 ### Instrumenting the example `gen_server`s with DDMon
 

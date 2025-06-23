@@ -10,17 +10,17 @@ leading to a deadlock).
 
 The execution of a test scenario begins with a number of initial `gen_server`
 calls (a.k.a. queries, in the terminology of the companion paper) to selected
-services. The data transmitted in each call contains instructions on how the
-data is supposed to be processed, including making further calls, waiting, or
-sending a response. This way a single `gen_server` instance created by the
-testing DSL can reproduce a variety of possible behaviours and deadlocks that
-may occur in real systems.
+services starting independent *sessions*. The data transmitted in each call
+contains instructions on how the data is supposed to be processed, including
+making further calls, waiting, or sending a response. This way a single
+`gen_server` instance created by the testing DSL can reproduce a variety of
+possible behaviours and deadlocks that may occur in real systems.
 
 See *Appendix A.1* of the companio paper for additional information.
 
 ## Scenario file format
 
-A test scenario is specified as an Erlang `conf` file which roughly follows the
+A test scenario is specified as an Erlang `conf` file which follows the
 following format:
 
 ```erlang
@@ -95,12 +95,29 @@ and `3`) involved in two independent sessions (`left` and `right`).
 A deadlock may occur depending on how long service `2` will wait after receiving
 a call from `3`:
 
-- If `2` waits long enough for `left` to terminate, then `1` will not be blocked
-  and the scenario will terminate with `0` sending a response to `1`, `1` to
-`2`, `2` to `3` and `3` finishing the session.
-- Instead, if `2` does not wait long enough, then `2` may block `1` expecting a
-  reply from `0` while session `left` blocks `0` until `1` is unblocked,
-  implying a deadlock.
+- If `2` waits long enough for `left` to receive a response, then the scenario
+  will terminate with `0` sending a response to `1`, `1` to `2`, `2` to `3` and
+  `3` finishing the session `right`.
+- Instead, if `2` sends a query to `1` after `0` receives the initial call from
+  `left`, but before `0` sends its final query to `1`, then inevitably `1`
+  becomes locked on `0` while `0` is locked on `1`, implying a deadlock.
+
+
+## Running scenarios
+
+To evaluate a particular scenario, build the project with `make` and use the
+generated escript as follows:
+
+```bash
+./ddmon ./scenarios/example.conf
+```
+
+Alternatively, use docker:
+
+```bash
+docker build -t ddmon .
+docker run --rm ddmon ./ddmon scenarios/example.conf
+```
 
 ## Reading the log
 
@@ -128,7 +145,7 @@ The `<EVENT>` can be either of the following:
 - `X ? Q(s)` — Received a query from `X` in session `s`
 - `X ? R(s)` — Received a response from `X` in session `s`
 - `X ! Q(s)` — Sent a query to `X` in session `s`
-- `X ! R(s)` — Sent a reply to `X` in session `s`
+- `X ! R(s)` — Sent a response to `X` in session `s`
 - `%[ Q(s) ]` — Monitor handles an incoming query and forwards it to its service
 - `%[ R(s) ]` — Monitor handles an incoming response and forwards it to its service
 - `%[ ?!Q(s) ]` — Monitor handles an outgoing query sent by its service
@@ -190,7 +207,7 @@ can be found in the `scenarios` directory as `.conf` files.
 
 #### `supersimple`
 
-Simple test with only one service that just replies to the initial call.
+Simple test with only one service that just responds to the initial call.
 
 ```erlang
 {sessions, [ {s, {0, [{wait, 10}]}} ] }.
@@ -216,9 +233,9 @@ calls `2` and `2` calls `0`, creating a locked-on dependency loop.
 Scenario that always terminates without deadlocking. Two parallel sessions
 finish successfully:
 
-- Service `0` calls `1`, `1` calls `2`, `2` replies to `1`, `1` replies to `0`
+- Service `0` calls `1`, `1` calls `2`, `2` responds to `1`, `1` responds to `0`
 - Service `4` calls `3`, `3` calls `0` (optionally waiting for it to receive
-  response from `1`), then `0` replies to `3`, and `3` replies to `4`
+  response from `1`), then `0` responds to `3`, and `3` responds to `4`
 
 ```erlang
 {sessions,
@@ -322,8 +339,6 @@ times.
 Service `0` calls `1` which responds immediately. Then, `0` calls `1` again, but
 this time `1` calls `0` causing a deadlock.
 
-This scenario covers a case where a deadlock occurs along responses to some
-previous queries.
 
 ```erlang
 {sessions,
