@@ -119,6 +119,9 @@ docker build -t ddmon .
 docker run --rm ddmon ./ddmon scenarios/example.conf
 ```
 
+See `./ddmon --help` for more information about the CLI interface.
+
+
 ## Reading the log
 
 Unless `--silent` is set, `ddmon` will print out a coloured log of certain
@@ -427,3 +430,7 @@ this time `1` calls `0` causing a deadlock.
  ]
 }.
 ```
+
+#### `bc` and `ts`
+
+Used to obtain *Figures 15* and *16* respectively.
