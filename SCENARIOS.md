@@ -200,6 +200,84 @@ short delay. In more details:
 8. Monitor of service `0` picks the response from its inbox
 9. Monitor of service `0` sends the response back to the session initiator
 
+
+## Benchmark scenarios
+
+Aside from the scenario interpreter described above, we provide a utility to
+generate random scenarios based on pre-defined templates and benchmark them to
+obtain various performance statistics. We used those statistic to obtain figures
+in *Section 7* of the companion paper. Such benchmarks are described as Erlang
+`.conf` files of the following format:
+
+```erlang
+{bench, [gen()]}
+```
+
+Currently, the only supported template is `{conditional, NCopies, Size}` which
+generates scenarios occasionally running into deadlocks similar to the one
+presented in the *Figure 7* of the companion paper. Here, `Size` defines the
+number of services, while `NCopies` specifies how many experiments should be
+conducted with this template.
+
+To conduct an example benchmark, run
+
+```bash
+./ddmon ./scenarios/bc-small.conf
+```
+
+Since multiple scenarios are evaluated in parallel, the log described in the
+section above is replaced with an animation depicting status of each experiment.
+While experiments are conducted, the output should be similar to
+
+```
+[ . T D D @ D D @ D @ D @ D O O @ O D @ . . . D D D D . @ @ @ . D D D D O O @ .
+  D . @ @ @ D D @ . D @ @ o @ D . @ D . @ D @ @ D . . . . D D @ D . @ @ @ D o D
+  @ @ D . D D D D @ @ @ D D o o D @ D . . @ D @ D . D @ @ D . D D @ @ @ @ @ D @
+  D D D ]
+```
+
+Each character (except `[`, `]` and ` `) shows the status of one experiment:
+
+- `.` — experiment not started yet
+- `o` — experiment is in preparation (e.g. the scenario is being generated)
+- `O` — experiment is running
+- `@` — experiment terminated successfully with no deadlocks
+- `D` — experiment terminated successfully with deadlocks reported
+- `T` — experiment timed out
+- `!` — an unexpected error happened during the execution
+
+After that, the tool produces a CSV file with aggregated statistics from each
+experiment. The statistics include numbers of messages exchanged between
+different types of entities, numbers of deadlocks reported, numbers of different
+types of messages, etc.
+
+<!-- Where `gen()` encodes one of the following scenario templates: -->
+
+<!-- - `{loop, Procs, Opts}` --- creates an always deadlocking scenario where -->
+<!--   services from the list `Procs` call each other in one sequence. The last -->
+<!--   service calls a random service from that list, creating a loop. If `{delay, X -->
+<!--   :: integer()}` is in the list `Opts`, services will wait `X` milliseconds -->
+<!--   between calls. -->
+<!-- - `{envelope, Procs, Opts}` --- creates a conditional deadlock resembling the -->
+<!--   one from *Figure 7* from the companion paper. Works similarly to `loop`, -->
+<!--   except that it spawns multiple sessions and the last service calls a randoms -->
+<!--   service from the next session in order. `Procs` is the list of service names -->
+<!--   to be used in the produced scenario. The following options are available in -->
+<!--   the list `Opts`: -->
+<!--   - `{split_rate, X :: float()}` where `X` is a float from `0.0` to `1.0`. -->
+<!--     Higher values will result in more sessions. -->
+<!--   - `{min_len, X :: integer()}` minimal length of each session before a service -->
+<!--     from another session is called. -->
+<!-- - `{braid, Procs, Opts}` --- same as `envelope`, but sessions may clash -->
+<!--   arbitrarily, not just with the next one in order. Results are more chaotic. -->
+<!-- - `{lurker, Procs, Opts}` --- spawn several sessions that initiate nested calls -->
+<!--   recursively in random order. Each service may call another service at most -->
+<!--   once. Never runs into a deadlock. -->
+<!-- - `{tree, Procs, Opts}` --- similar to `lurker`, but each service may perform -->
+<!--   several calls in the course of experiment. -->
+<!-- - `{conditional, NCopies, Size}` ---  -->
+
+
 ## Overview of provided scenarios
 
 Below we provide descriptions of other scenarios that we used in testing. All
