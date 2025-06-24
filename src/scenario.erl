@@ -188,7 +188,13 @@ run_scenario(Scenario, Opts) ->
                                  timer:sleep(T),
                                  I
                          end,
-                     R = gen_statem:send_request(SessionInitProc, {SessionId, Session}),
+                     R =
+                         case proplists:get_value(unmonitored, Opts, false) of
+                             true ->
+                                 ddmon:send_request(SessionInitProc, {SessionId, Session});
+                             false ->
+                                 ddmon:send_request_report(SessionInitProc, {SessionId, Session})
+                         end,
                      gen_statem:reqids_add(R, SessionId, ReqIds)
              end,
     Reqs = lists:foldl(Folder, gen_statem:reqids_new(), FScenario),
@@ -396,9 +402,9 @@ run_bench(Bench, Opts) ->
 
 -define(GRID_WIDTH, 39).
 grid_printer() ->
-    print_legend(),
     receive {workers, Ws, MaxSize} -> grid_printer(Ws, MaxSize) end.
 grid_printer(Ws, MaxSize) ->
+    print_legend(Ws),
     State = maps:from_list([{W, init} || W <- Ws]),
     %% print_size(0, MaxSize),
     print_grid(State),
@@ -409,7 +415,7 @@ print_grid(State) ->
         " ]\n",
     io:format("~s", [S]).
 
-print_legend() ->
+print_legend(Ws) ->
     Legend =
         [ begin
               ansi_color:render([blob_format(Blob), " ", blob_descr(Blob)])
@@ -417,7 +423,10 @@ print_legend() ->
           || Blob <- [init, woke, busy, done, dead, down, time]
         ],
     S = string:join(Legend, ansi_color:render({bold, " | "})),
-    io:format("~s ~s\n", [ansi_color:render({bold, "Experiment status legend:\n"}), S]).
+    Headline = ansi_color:render([{bold, "*** Running experiments on "},
+                                  {[bold, italic], integer_to_list(length(Ws))},
+                                  {bold, " scenarios. Experiment status legend:\n"}]),
+    io:format("~s ~s\n", [Headline, S]).
 
 blob_format(Blob) ->
     case Blob of

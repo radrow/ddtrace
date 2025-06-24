@@ -137,11 +137,8 @@ combination of the state tracked by the `gen_statem` behaviour (`unlocked`,
 | Paper             | DDMon implementation                                                               |
 |-------------------|------------------------------------------------------------------------------------|
 | `probe` defined   | Monitor state machine is in the `locked` state + field `req_tag` in `state` record |
-|-------------------|------------------------------------------------------------------------------------|
 | `probe` undefined | Monitor state machine is in the `unlocked` state                                   |
-|-------------------|------------------------------------------------------------------------------------|
 | `waiting`         | Field `waitees` in `state` record                                                  |
-|-------------------|------------------------------------------------------------------------------------|
 | `alarm`           | Whether state machine is in `deadlocked` state                                     |
 
 We use `gen_server:reply_tag()` to implement probes. These tags are uniquely
@@ -158,11 +155,14 @@ to properly forward responses.
 Rules from *Figure 12* in the companion paper are implemented by the state
 callbacks of `ddmon`.
 
-In addition to the behaviours described in the paper, monitors propagate
-information about observed deadlocks via responses of form `{?DEADLOCK, DL}`
-where `?DEADLOCK` is a constant defined in `ddmon.hrl` and `DL` is a deadlocked
-set. This feature is optional, but is helpful to terminate the system early in
-tests and investigate deadlocks.
+After a deadlock is identified, monitors engage in additional communication to
+propagate the alarm and finally report it to initial callers. This communication
+is not covered in the paper, as it is used to only to report deadlocks, not to
+detect them. Deadlock notifications are propagated in a similar manner to
+probes, except that they are sent as `gen_server` responses of form `{?DEADLOCK,
+DL}` where `?DEADLOCK` is a constant defined in `ddmon.hrl` and `DL` is a
+deadlocked set. Deadlock notifications do not reach monitored services — only
+monitors and unmonitored callers receive it.
 
 ## Testing scenarios
 

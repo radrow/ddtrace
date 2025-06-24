@@ -6,10 +6,20 @@
 -define(PROBE_DELAY, '$ddmon_probe_delay').
 
 %% API
--export([start/2, start/3, start_link/2, start_link/3]).
+-export([ start/2, start/3, start/4
+        , start_link/2, start_link/3, start_link/4
+        ]).
 
 %% gen_server interface
--export([call/2, call/3, cast/2, stop/3]).
+-export([ call/2, call/3
+        , cast/2, stop/3
+        , send_request/2, send_request/4
+        ]).
+
+%% Helper API
+-export([ call_report/2, call_report/3
+        , send_request_report/2, send_request_report/4
+        ]).
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
@@ -27,16 +37,19 @@
 %%% DDMon Types
 %%%======================
 
--record(state,{worker :: pid(),
-               req_tag :: gen_server:reply_tag() | undefined,
-               req_id :: gen_statem:request_id() | undefined,
-               waitees :: gen_statem:request_id_collection()
-              }).
--record(deadstate,{worker :: pid(),
-                   deadlock :: list(pid()),
-                   req_id :: gen_statem:request_id(),
-                   foreign = false :: boolean()
-                  }).
+-record(state,
+        { worker :: pid()
+        , req_tag :: gen_server:reply_tag() | undefined
+        , req_id :: gen_statem:request_id() | undefined
+        , waitees :: gen_server:request_id_collection()
+        }).
+
+-record(deadstate,
+        { worker :: pid()
+        , deadlock :: list(pid())
+        , req_id :: gen_statem:request_id()
+        , foreign = false :: boolean()
+        }).
 
 state_get_worker(#state{worker = Worker}) ->
     Worker;
@@ -81,11 +94,18 @@ start(Module, Args, Options) ->
                     gen_statem:start(?MODULE, {Module, Args, ChildOptions}, Options);
                 Name when is_atom(Name) ->
                     gen_statem:start({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
-                {global, Name} ->
-                    gen_statem:start({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
-                {via, Reg, Name} ->
-                    gen_statem:start_link({via, Reg, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+                Name ->
+                    gen_statem:start(Name, ?MODULE, {Module, Args, ChildOptions}, Options)
             end
+    end.
+
+start(ServerName, Module, Args, Options) ->
+    %% We allow running unmonitored systems via options
+    case proplists:get_value(unmonitored, proplists:get_value(ddmon_opts, Options, []), false) of
+        true ->
+            gen_server:start(Module, Args, Options);
+        false ->
+            gen_statem:start(ServerName, ?MODULE, {Module, Args, Options}, Options)
     end.
 
 
@@ -105,13 +125,19 @@ start_link(Module, Args, Options) ->
                     gen_statem:start_link(?MODULE, {Module, Args, ChildOptions}, Options);
                 Name when is_atom(Name) ->
                     gen_statem:start_link({local, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
-                {global, Name} ->
-                    gen_statem:start_link({global, Name}, ?MODULE, {Module, Args, ChildOptions}, Options);
-                {via, Reg, Name} ->
-                    gen_statem:start_link({via, Reg, Name}, ?MODULE, {Module, Args, ChildOptions}, Options)
+                Name ->
+                    gen_statem:start_link(Name, ?MODULE, {Module, Args, ChildOptions}, Options)
             end
     end.
 
+start_link(ServerName, Module, Args, Options) ->
+    %% We allow running unmonitored systems via options
+    case proplists:get_value(unmonitored, proplists:get_value(ddmon_opts, Options, []), false) of
+        true ->
+            gen_server:start(Module, Args, Options);
+        false ->
+            gen_statem:start_link(ServerName, ?MODULE, {Module, Args, Options}, Options)
+    end.
 
 %%%======================
 %%% gen_server interface
@@ -119,6 +145,7 @@ start_link(Module, Args, Options) ->
 
 call(Server, Request) ->
     call(Server, Request, 5000).
+
 call(Server, Request, Timeout) ->
     case get(?MON_PID) of
         undefined ->
@@ -126,6 +153,30 @@ call(Server, Request, Timeout) ->
         Mon ->
             gen_statem:call(Mon, {Request, Server}, Timeout)
     end.
+
+
+%% `call` variant that makes the caller receive probes and deadlock
+%% notifications.
+call_report(Server, Request) ->
+    call(Server, {?MONITORED_CALL, Request}).
+
+call_report(Server, Request, Timeout) ->
+    call(Server, {?MONITORED_CALL, Request}, Timeout).
+
+
+send_request(Server, Request) ->
+    gen_statem:send_request(Server, Request).
+
+send_request(Server, Request, Label, ReqIdCollection) ->
+    gen_statem:send_request(Server, Request, Label, ReqIdCollection).
+
+
+send_request_report(Server, Request) ->
+    gen_statem:send_request(Server, {?MONITORED_CALL, Request}).
+
+send_request_report(Server, Request, Label, ReqIdCollection) ->
+    gen_statem:send_request(Server, {?MONITORED_CALL, Request}, Label, ReqIdCollection).
+
 
 cast(Server, Message) ->
     gen_server:cast(Server, Message).
@@ -145,7 +196,7 @@ init({Module, Args, Options}) ->
         {ok, Pid} ->
             State =
                 #state{worker = Pid,
-                       waitees = gen_statem:reqids_new(),
+                       waitees = gen_server:reqids_new(),
                        req_tag = undefined,
                        req_id = undefined
                       },
@@ -160,14 +211,6 @@ terminate(_Reason, _Data) ->
 
 terminate(_Reason, _State, _Data) ->
     ok.
-
-%% terminate(Reason, #state{worker = Worker}) ->
-%%     erlang:unlink(Worker),
-%%     gen_server:stop(Worker, Reason, 3000);
-%% terminate(Reason, #deadstate{worker = Worker}) ->
-%%     erlang:unlink(Worker),
-%%     gen_server:stop(Worker, Reason, 3000).
-
 
 callback_mode() ->
     [state_functions, state_enter].
@@ -186,7 +229,7 @@ unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker
     [ begin
           gen_statem:reply(W, {?DEADLOCK, [self(), self()]})
       end
-      || {_, W} <- gen_statem:reqids_to_list(Waitees)
+      || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
     {next_state, deadlocked,
      #deadstate{worker = Worker, deadlock = [self(), self()], req_id = PTag}
@@ -195,7 +238,7 @@ unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker
 %% Our service wants a call
 unlocked({call, {Worker, PTag}}, {Msg, Server}, State = #state{worker = Worker}) ->
     %% Forward the request as `call` asynchronously
-    ExtTag = gen_statem:send_request(Server, Msg),
+    ExtTag = gen_statem:send_request(Server, {?MONITORED_CALL, Msg}),
 
     {next_state, locked,
      State#state{
@@ -206,11 +249,17 @@ unlocked({call, {Worker, PTag}}, {Msg, Server}, State = #state{worker = Worker})
 
 %% Incoming external call
 unlocked({call, From}, Msg, State = #state{waitees = Waitees0}) ->
+    {Monitored, RawMsg} =
+        case Msg of
+            {?MONITORED_CALL, RMsg} -> {true, RMsg};
+            _ -> {false, Msg}
+        end,
+
     %% Forward to the process
-    ReqId = gen_server:send_request(State#state.worker, Msg),
+    ReqId = gen_server:send_request(State#state.worker, RawMsg),
 
     %% Register the request
-    Waitees1 = gen_statem:reqids_add(ReqId, From, Waitees0),
+    Waitees1 = gen_server:reqids_add(ReqId, #{from => From, monitored => Monitored}, Waitees0),
 
     {keep_state,
      State#state{waitees = Waitees1}
@@ -239,7 +288,7 @@ unlocked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
 
 %% Process sent a reply (or not)
 unlocked(info, Msg, State = #state{waitees = Waitees0, worker = Worker}) ->
-    case gen_statem:check_response(Msg, Waitees0, _Delete = true) of
+    case gen_server:check_response(Msg, Waitees0, _Delete = true) of
         no_request ->
             %% Unknown info (waitees empty). Let the process handle it.
             Worker ! Msg,
@@ -250,7 +299,7 @@ unlocked(info, Msg, State = #state{waitees = Waitees0, worker = Worker}) ->
             Worker ! Msg,
             keep_state_and_data;
 
-        {{reply, Reply}, From, Waitees1} ->
+        {{reply, Reply}, #{from := From}, Waitees1} ->
             %% It's a reply from the process. Forward it.
             {keep_state,
              State#state{waitees = Waitees1},
@@ -267,27 +316,36 @@ locked({call, From}, '$get_child', #state{worker = Worker}) ->
 
 %% Incoming external call
 locked({call, From}, Msg, State = #state{req_tag = PTag, waitees = Waitees0}) ->
+    {Monitored, RawMsg} =
+        case Msg of
+            {?MONITORED_CALL, RMsg} -> {true, RMsg};
+            _ -> {false, Msg}
+        end,
+
     %% Forward to the process
-    ReqId = gen_server:send_request(State#state.worker, Msg),
+    ReqId = gen_server:send_request(State#state.worker, RawMsg),
 
     %% Register the request
-    Waitees1 = gen_statem:reqids_add(ReqId, From, Waitees0),
+    Waitees1 = gen_server:reqids_add(ReqId, #{from => From, monitored => Monitored}, Waitees0),
 
-    case get(?PROBE_DELAY) of
-        -1 ->
-            %% Send a probe
-            gen_statem:cast(element(1, From), {?PROBE, PTag, [self()]});
-        N when is_integer(N) ->
-            %% Schedule a delayed probe
-            Self = self(),
-            spawn_link(
-              fun() ->
-                      timer:sleep(N),
-                      gen_statem:cast(Self, { ?SCHEDULED_PROBE
-                                            , _To = element(1, From)
-                                            , _Probe = {?PROBE, PTag, [Self]}
-                                            })
-                  end)
+    if Monitored ->
+            case get(?PROBE_DELAY) of
+                -1 ->
+                    %% Send a probe
+                    gen_statem:cast(element(1, From), {?PROBE, PTag, [self()]});
+                N when is_integer(N) ->
+                    %% Schedule a delayed probe
+                    Self = self(),
+                    spawn_link(
+                      fun() ->
+                              timer:sleep(N),
+                              gen_statem:cast(Self, { ?SCHEDULED_PROBE
+                                                    , _To = element(1, From)
+                                                    , _Probe = {?PROBE, PTag, [Self]}
+                                                    })
+                      end)
+            end;
+       true -> ok
     end,
 
     {keep_state,
@@ -320,7 +378,7 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
                       end,
                   gen_statem:reply(W, {?DEADLOCK, PassDL})
               end
-              || {_, W} <- gen_statem:reqids_to_list(Waitees)
+              || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
             ],
             {next_state, deadlocked, #deadstate{foreign = true, worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
 
@@ -337,7 +395,7 @@ locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_
     [ begin
           gen_statem:reply(W, {?DEADLOCK, [self() | Chain]})
       end
-      || {_, W} <- gen_statem:reqids_to_list(Waitees)
+      || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
     {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | Chain], req_id = ReqId}};
 
@@ -347,7 +405,7 @@ locked(cast, {?PROBE, Probe, Chain}, #state{waitees = Waitees}) ->
     [ begin
           gen_statem:cast(W, {?PROBE, Probe, [self()|Chain]})
       end
-      || {_, {W, _}} <- gen_statem:reqids_to_list(Waitees)
+      || {_, #{from := {W, _}, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
     keep_state_and_data;
 
@@ -375,14 +433,30 @@ deadlocked({call, From}, '$get_child', #deadstate{worker = Worker}) ->
 
 %% Incoming external call. We just tell them about the deadlock.
 deadlocked({call, From}, Msg, State = #deadstate{deadlock = DL}) ->
+    {Monitored, RawMsg} =
+        case Msg of
+            {?MONITORED_CALL, RMsg} -> {true, RMsg};
+            _ -> {false, Msg}
+        end,
+
     %% Forward to the process just in case
-    gen_server:send_request(State#deadstate.worker, Msg),
-    %% gen_statem:reply(element(1, From),k ),
-    {keep_state_and_data, {reply, From, {?DEADLOCK, DL}}};
+    gen_server:send_request(State#deadstate.worker, RawMsg),
+
+    if Monitored ->
+            {keep_state_and_data, {reply, From, {?DEADLOCK, DL}}};
+       true ->
+            keep_state_and_data
+    end;
 
 deadlocked({call, _From}, Msg, State) ->
+    RawMsg =
+        case Msg of
+            {?MONITORED_CALL, RMsg} -> RMsg;
+            _ -> Msg
+        end,
+
     %% Forward to the process, who cares
-    gen_server:send_request(State#deadstate.worker, Msg),
+    gen_server:send_request(State#deadstate.worker, RawMsg),
     keep_state_and_data;
 
 %% Probe
