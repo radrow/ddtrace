@@ -83,6 +83,10 @@ defmodule MicrochipFactory do
   ### Printing and initiating
   ### ==========================================================================
 
+  @doc """
+  Hack to check if the service is monitored. Needed to catch deadlock reports
+  from this script.
+  """
   defmacro send_req(proc, msg) do
     gs_mod = MicrochipFactory.Producer.gs_module()
     :code.ensure_loaded gs_mod
