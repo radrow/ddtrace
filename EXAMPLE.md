@@ -2,7 +2,7 @@
 
 DDMon can monitor applications consisting of processes (written in Erlang or
 Elixir) based on the generic server (`gen_server`) behaviour. Intuitively, DDMon
-acts as a drop-in replacement for the `gen_server` behaviour of the OTP standard
+acts as a drop-in replacement for the `gen_server` module of the OTP standard
 library. At this stage, DDMon supports only the most commonly used features of
 generic servers, i.e. the `call` and `cast` callbacks. Timeouts, deferred
 responses (`no_reply`) and pooled calls through `reqids` are not covered by the
@@ -151,3 +151,8 @@ The **Success** output should look exactly as before. However, if the system
 deadlocks, you should see a red **Deadlock** message (instead of "Timeout"),
 followed by a list of PIDs: those are the PIDs of the processes involved in the
 deadlock. Symbol `<==` marks a process that reported the deadlock.
+
+The `:monitored` parameter instructs the script interacting with the system to
+subscribe to deadlock reports. Without this parameter (default), deadlocks are
+not reported in order to preserve compatibility w.r.t. communication with
+external callers.

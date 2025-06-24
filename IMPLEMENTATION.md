@@ -2,11 +2,12 @@
 
 DDMon is implemented mainly in Erlang and is built using
 [Mix](https://hexdocs.pm/elixir/introduction-to-mix.html). The overall structure
-is rather standard for Erlang projects:
+is rather standard for Mix projects:
 
 - `mix.exs` — project configuration
 - `src/` — Erlang code
 - `lib/` — Elixir code
+
 
 ## Algorithm for distributed deadlock detection monitoring
 
@@ -30,7 +31,7 @@ Elixir must satisfy two requirements:
 
 This is necessary because the monitor needs to "wrap" the `gen_server` and
 intercept its calls, as required by the semantics of monitored services in
-Section 4 of the companion paper.
+*Section 4* of the companion paper.
 
 (In the case of `gen_server`s written in Elixir, both requirements are satisfied
 by defining a simple alias, as discussed in the file [EXAMPLE.md](EXAMPLE.md)).
@@ -126,13 +127,20 @@ callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback
   Therefore, in the implementation, `ddmon` simply sends such probes
   sequentially.
 
+The monitor internally distinguishes calls forwarded by other monitors from
+external ones (e.g. unmonitored services) by wrapping messages with
+`{?MONITORED_CALL, Msg}`, where `?MONITORED_CALL` is a constant Erlang atom
+defined in `src/ddmon.hrl`, and `Msg` is the call payload. This way monitors
+avoid polluting unmonitored parts of the network with probes.
+
 #### Implementation of the deadlock monitoring algorithm
 
-In the companion paper (Section 5) we formalise the monitor state as a record
+In the companion paper (*Section 5*) we formalise the monitor state as a record
 with three fields. These fields correspond to the `ddmon` implementation as
 follows. Note that the monitor implementation's current state arises from a
 combination of the state tracked by the `gen_statem` behaviour (`unlocked`,
-`locked`, `deadlocked`), plus the contents of a `state` record.
+`locked`, `deadlocked`), plus the contents of a `state` record (referred to as
+"data" in the `gen_statem` documentation).
 
 | Paper             | DDMon implementation                                                               |
 |-------------------|------------------------------------------------------------------------------------|
@@ -148,7 +156,7 @@ is not explicitly defined, as the necessary unique probe is obtained directly
 from the outgoing query.
 
 To implement the `waiting` list, we use the collection of request ids provided
-by `gen_statem` (`gen_statem:request_id_collection()`). This lets us
+by `gen_server` (`gen_server:request_id_collection()`). This lets us
 conveniently manage the list of waiting services and provides us with a handle
 to properly forward responses.
 
