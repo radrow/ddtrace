@@ -25,6 +25,7 @@ defmodule MicrochipFactory.Inspector do
     end
   end
 
+
   def format({:via, _, {_, name}}) do
     format(name)
   end
@@ -40,5 +41,9 @@ defmodule MicrochipFactory.Inspector do
 
   def inspect_microchip(name, microchip) do
     GenServer.call(name, {:inspect_microchip, microchip}, :infinity)
+  end
+
+  def gs_module do
+    GenServer
   end
 end

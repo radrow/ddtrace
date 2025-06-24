@@ -27,11 +27,11 @@ defmodule MicrochipFactory.Producer do
 
     {:reply, {:ok, microchip}, state}
   end
-
   def handle_call(:get_metadata, _from, state) do
     log(state, "Giving producer metadata")
     {:reply, state.metadata, state}
   end
+
 
   def format({:via, _, {_, name}}) do
     format(name)
@@ -52,5 +52,9 @@ defmodule MicrochipFactory.Producer do
 
   def get_metadata(name) do
     GenServer.call(name, :get_metadata, :infinity)
+  end
+
+  def gs_module do
+    GenServer
   end
 end

@@ -1,5 +1,13 @@
 defmodule MicrochipFactory do
 
+  ### ==========================================================================
+  ### Example interactions
+  ### ==========================================================================
+
+
+  @doc"""
+  Simple example with two services
+  """
   def start_two do
     Registry.start_link(keys: :unique, name: :factory)
 
@@ -21,6 +29,10 @@ defmodule MicrochipFactory do
     do_calls(calls, 1000)
   end
 
+
+  @doc """
+  Complex example with many producers and a few inspectors
+  """
   def start_many do
     Registry.start_link(keys: :unique, name: :factory)
 
@@ -67,12 +79,29 @@ defmodule MicrochipFactory do
   end
 
 
+  ### ==========================================================================
   ### Printing and initiating
+  ### ==========================================================================
+
+  defmacro send_req(proc, msg) do
+    gs_mod = MicrochipFactory.Producer.gs_module()
+    :code.ensure_loaded gs_mod
+    if function_exported?(gs_mod, :send_request_report, 2) do
+        quote do
+        :ddmon.send_request_report(unquote(proc), unquote(msg))
+      end
+    else
+      quote do
+        :gen_server.send_request(unquote(proc), unquote(msg))
+      end
+    end
+  end
 
   defp do_calls(calls, timeout) do
     reqids = for {prod, insp} <- calls do
       :timer.sleep(:rand.uniform(80 * length(calls)))
-      :gen_server.send_request(prod, {:produce_microchip, insp})
+      send_req(prod, {:produce_microchip, insp})
+      # :ddmon.send_request_report(prod, {:produce_microchip, insp})
     end
 
     resps = for reqid <- reqids do
