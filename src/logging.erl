@@ -188,7 +188,8 @@ c_deadlocks(DLs) ->
 c_timeout() ->
     {[white, bold, underline, invert], "### TIMEOUT ###"}.
 
-
+c_msg({?MONITORED_CALL, Msg}) ->
+    c_msg(Msg);
 c_msg(Msg) when is_tuple(Msg) andalso size(Msg) > 0 ->
     c_msg(element(1, Msg));
 c_msg(?DEADLOCK) ->
