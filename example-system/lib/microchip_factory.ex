@@ -8,7 +8,7 @@ defmodule MicrochipFactory do
   @doc"""
   Simple example with two services
   """
-  def start_two do
+  def start_two(monitored \\ false) do
     Registry.start_link(keys: :unique, name: :factory)
 
     {:ok, _prod1} = MicrochipFactory.Producer.start_link({:via, Registry, {:factory, :prod1}}, 3, [])
@@ -26,14 +26,14 @@ defmodule MicrochipFactory do
     calls = [{{:via, Registry, {:factory, :prod1}}, {:via, Registry, {:factory, :insp2}}},
              {{:via, Registry, {:factory, :prod2}}, {:via, Registry, {:factory, :insp1}}}
             ]
-    do_calls(calls, 1000)
+    do_calls(calls, monitored, 1000)
   end
 
 
   @doc """
   Complex example with many producers and a few inspectors
   """
-  def start_many do
+  def start_many(monitored \\ false) do
     Registry.start_link(keys: :unique, name: :factory)
 
     # How long a single cascade of calls should be
@@ -75,7 +75,7 @@ defmodule MicrochipFactory do
       }
     end
 
-    do_calls(calls, 4000)
+    do_calls(calls, monitored, 4000)
   end
 
 
@@ -83,29 +83,14 @@ defmodule MicrochipFactory do
   ### Printing and initiating
   ### ==========================================================================
 
-  @doc """
-  Hack to check if the service is monitored. Needed to catch deadlock reports
-  from this script.
-  """
-  defmacro send_req(proc, msg) do
-    gs_mod = MicrochipFactory.Producer.gs_module()
-    :code.ensure_loaded gs_mod
-    if function_exported?(gs_mod, :send_request_report, 2) do
-        quote do
-        :ddmon.send_request_report(unquote(proc), unquote(msg))
-      end
-    else
-      quote do
-        :gen_server.send_request(unquote(proc), unquote(msg))
-      end
-    end
-  end
-
-  defp do_calls(calls, timeout) do
+  defp do_calls(calls, monitored, timeout) do
     reqids = for {prod, insp} <- calls do
       :timer.sleep(:rand.uniform(80 * length(calls)))
-      send_req(prod, {:produce_microchip, insp})
-      # :ddmon.send_request_report(prod, {:produce_microchip, insp})
+
+      case monitored do
+        :monitored -> :ddmon.send_request_report(prod, {:produce_microchip, insp})
+        false -> :ddmon.send_request(prod, {:produce_microchip, insp})
+      end
     end
 
     resps = for reqid <- reqids do

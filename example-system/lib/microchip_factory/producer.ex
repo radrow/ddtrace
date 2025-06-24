@@ -53,8 +53,4 @@ defmodule MicrochipFactory.Producer do
   def get_metadata(name) do
     GenServer.call(name, :get_metadata, :infinity)
   end
-
-  def gs_module do
-    GenServer
-  end
 end

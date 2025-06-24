@@ -112,7 +112,7 @@ To instrument the example application with DDMon, edit the following files:
 - `example-system/lib/microchip_factory/producer.ex`
 - `example-system/lib/microchip_factory/inspector.ex`
 
-In each uncomment the *line 3*. For example, `producer.ex` should begin as
+In each, uncomment the *line 3*. For example, `producer.ex` should begin as
 follows:
 
 ```elixir
@@ -127,17 +127,24 @@ defmodule MicrochipFactory.Producer do
   ...
 ```
 
-Now, you should rebuild the docker image:
+This replacement can also be performed using `sed`:
+
+```bash
+sed -i 's/  # alias :ddmon/  alias :ddmon/g' lib/microchip_factory/*.ex
+```
+
+After that, you should rebuild the docker image:
 
 ```bash
 docker build -t ddmon .
 ```
 
-Now you can try rerunning the experiment several times (replace `start_two` with
-`start_many` to run the large experiment):
+Now you can try rerunning the experiment several times with an additional
+`:monitored` parameter (replace `start_two` with `start_many` to run the large
+experiment):
 
 ```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
+docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two :monitored"'
 ```
 
 The **Success** output should look exactly as before. However, if the system
