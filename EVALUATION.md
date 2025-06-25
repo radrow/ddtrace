@@ -136,12 +136,12 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium
 
 After that, the following PDF files should be generated:
 
-- *Figure 15a*: `output/figure_15_a.pdf`
-- *Figure 15b*: `output/figure_15_b.pdf`
-- *Figure 15c*: `output/figure_15_c.pdf`
-- *Figure 16a*: `output/figure_16_a/*.pdf` (many files)
-- *Figure 16b*: `output/figure_16_b/*.pdf` (many files)
-- *Figure 16c*: `output/figure_16_c/*.pdf` (many files)
+- *Figure 15a*: `output/fig_15_a.pdf`
+- *Figure 15b*: `output/fig_15_b.pdf`
+- *Figure 15c*: `output/fig_15_c.pdf`
+- *Figure 16a*: `output/fig_16_a/*.pdf` (many files)
+- *Figure 16b*: `output/fig_16_b/*.pdf` (many files)
+- *Figure 16c*: `output/fig_16_c/*.pdf` (many files)
 
 Note that the produced plots may look different w.r.t. those in the paper. This
 is because the benchmarks perform multiple executions of concurrent systems, and
@@ -155,9 +155,8 @@ benchmark scripts above with those in the paper.
 
 #### Figure 15
 
-The plots produced for Figure 15 by our benchmarking script do not have a legend
-(we manually placed the legend shown in the paper). The produced plots may be
-slightly different w.r.t. the paper, but the overall trends should be the same:
+The plots produced for Figure 15 by our benchmarking script may be slightly
+different w.r.t. the paper, but the overall trends should be the same:
 
 - In *Figures 15a, 15b and 15c*, the orange line should show values greater than
   blue and green lines, while red line should be above the orange line.
@@ -173,11 +172,11 @@ Each time series in Figure 16 in the paper visualises one specific execution of
 the benchmarked scenario, under different probe emission delays (0ms, 1000ms, or
 5000ms). To produce Figure 16 we manually selected 3 executions that clearly
 show how many queries, responses, and probes may be emitted, and when. The
-benchmark script in the artifact runs and plots numerous experiments for each
-probe delay, and thus, produces many candidate plots for Figures *16a*, *16b*
-and *16c*; the script saves all such candidate plots as PDF files in the
-directories `output/figure_16_a/`, `output/figure_16_b/`, and
-`output/figure_16_c/`, respectively.
+benchmark script in the artifact runs and plots numerous execution time series
+for each probe delay --- and therefore, the script produces many candidate plots
+for Figures *16a*, *16b* and *16c*. The script saves all such candidate plots as
+PDF files in the directories `output/fig_16_a/`, `output/fig_16_b/`, and
+`output/fig_16_c/`, respectively.
 
 In each produced plot, there may be any number of deadlocks (usually zero or
 one) reported as red dashed vertical lines; to create the figures in the paper,
@@ -189,13 +188,13 @@ When inspecting the candidate plots produced by the benchmarking scripts, you
 should be able to observe the following trends (also visible in the paper):
 
 - In the candidate plots for *Figure 16a* (PDF files saved in the directory
-  `output/figure_16_a/`), the red solid line rises early, and often rises above
+  `output/fig_16_a/`), the red solid line rises early, and often rises above
   the dashed cyan line.
 - In the candidate plots for *Figure 16b* (PDF files saved in the directory
-  `output/figure_16_b/`), the orange solid line is generally below both the
+  `output/fig_16_b/`), the orange solid line is generally below both the
   dashed cyan and dotted blue lines.
 - In the candidate plots for *Figure 16c* (PDF files saved in the directory
-  `output/figure_16_c/`), the green solid line is generally below both dashed
+  `output/fig_16_c/`), the green solid line is generally below both dashed
   cyan and dotted blue lines; moreover, the green solid line should be always
   close to zero, _unless_ a red dashed vertical line (indicating a deadlock) is
   present. (This happens because probe emission increases when a deadlock
