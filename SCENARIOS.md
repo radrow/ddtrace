@@ -213,11 +213,11 @@ in *Section 7* of the companion paper. Such benchmarks are described as Erlang
 `.conf` files of the following format:
 
 ```erlang
-{bench, [gen()]}
+{bench, list(scenario_template())}
 ```
 
 Currently, the only supported template is `{conditional, NCopies, Size}` which
-generates scenarios occasionally running into deadlocks similar to the one
+generates scenarios that occasionally run into deadlocks similar to the one
 presented in the *Figure 7* of the companion paper. Here, `Size` defines the
 number of services, while `NCopies` specifies how many experiments should be
 conducted with this template.
@@ -249,10 +249,10 @@ Each character (except `[`, `]` and ` `) shows the status of one experiment:
 - `T` — experiment timed out
 - `!` — an unexpected error happened during the execution
 
-After that, the tool produces a CSV file with aggregated statistics from each
-experiment. The statistics include numbers of messages exchanged between
-different types of entities, numbers of deadlocks reported, numbers of different
-types of messages, etc.
+After that, the tool produces aggregated statistics from each experiment in CSV
+format. The statistics include numbers of messages exchanged between different
+types of entities, numbers of deadlocks reported, numbers of different types of
+messages, etc.
 
 <!-- Where `gen()` encodes one of the following scenario templates: -->
 
@@ -433,4 +433,4 @@ this time `1` calls `0` causing a deadlock.
 
 #### `bc` and `ts`
 
-Used to obtain *Figures 15* and *16* respectively.
+Large benchmarks used to obtain *Figures 15* and *16* respectively.
