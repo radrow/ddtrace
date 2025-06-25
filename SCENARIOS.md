@@ -254,32 +254,6 @@ format. The statistics include numbers of messages exchanged between different
 types of entities, numbers of deadlocks reported, numbers of different types of
 messages, etc.
 
-<!-- Where `gen()` encodes one of the following scenario templates: -->
-
-<!-- - `{loop, Procs, Opts}` --- creates an always deadlocking scenario where -->
-<!--   services from the list `Procs` call each other in one sequence. The last -->
-<!--   service calls a random service from that list, creating a loop. If `{delay, X -->
-<!--   :: integer()}` is in the list `Opts`, services will wait `X` milliseconds -->
-<!--   between calls. -->
-<!-- - `{envelope, Procs, Opts}` --- creates a conditional deadlock resembling the -->
-<!--   one from *Figure 7* from the companion paper. Works similarly to `loop`, -->
-<!--   except that it spawns multiple sessions and the last service calls a randoms -->
-<!--   service from the next session in order. `Procs` is the list of service names -->
-<!--   to be used in the produced scenario. The following options are available in -->
-<!--   the list `Opts`: -->
-<!--   - `{split_rate, X :: float()}` where `X` is a float from `0.0` to `1.0`. -->
-<!--     Higher values will result in more sessions. -->
-<!--   - `{min_len, X :: integer()}` minimal length of each session before a service -->
-<!--     from another session is called. -->
-<!-- - `{braid, Procs, Opts}` --- same as `envelope`, but sessions may clash -->
-<!--   arbitrarily, not just with the next one in order. Results are more chaotic. -->
-<!-- - `{lurker, Procs, Opts}` --- spawn several sessions that initiate nested calls -->
-<!--   recursively in random order. Each service may call another service at most -->
-<!--   once. Never runs into a deadlock. -->
-<!-- - `{tree, Procs, Opts}` --- similar to `lurker`, but each service may perform -->
-<!--   several calls in the course of experiment. -->
-<!-- - `{conditional, NCopies, Size}` ---  -->
-
 
 ## Overview of provided scenarios
 
