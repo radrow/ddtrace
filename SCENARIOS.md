@@ -145,24 +145,27 @@ Where:
 
 The `<EVENT>` can be either of the following:
 
-- `X ? Q(s)` — Received a query from `X` in session `s`
-- `X ? R(s)` — Received a response from `X` in session `s`
-- `X ! Q(s)` — Sent a query to `X` in session `s`
-- `X ! R(s)` — Sent a response to `X` in session `s`
-- `%[ Q(s) ]` — Monitor handles an incoming query and forwards it to its service
-- `%[ R(s) ]` — Monitor handles an incoming response and forwards it to its service
-- `%[ ?!Q(s) ]` — Monitor handles an outgoing query sent by its service
-- `%[ ?!R(s) ]` — Monitor handles an outgoing response sent by its service
-- `=> UNLOCK` — Monitor enters unlocked state
-- `=> LOCK(p)` — Monitor enters locked state and initiates probe `p`
-- `=> ### DEADLOCK ### DL` — Monitor observes a deadlock; `DL` shows the list of
-  services which form a deadlock
-- `=> foreign_deadlock` — Monitor learns that it is dependent on a deadlock
+- `X ? Q(s)` — Received a query from `X` in session `s`.
+- `X ? R(s)` — Received a response from `X` in session `s`.
+- `X ! Q(s)` — Sent a query to `X` in session `s`.
+- `X ! R(s)` — Sent a response to `X` in session `s`.
+- `%[ Q(s) ]` — Monitor handles an incoming query and forwards it to its service.
+- `%[ R(s) ]` — Monitor handles an incoming response and forwards it to its service.
+- `%[ ?!Q(s) ]` — Monitor handles an outgoing query sent by its service.
+- `%[ ?!R(s) ]` — Monitor handles an outgoing response sent by its service.
+- `=> UNLOCK` — Monitor enters unlocked state.
+- `=> LOCK(p)` — Monitor enters locked state and initiates probe `p`.
+- `=> ### DEADLOCK ### DL` — Monitor detects a deadlock; `DL` is the list of
+  services which form a deadlock cycle.
+- `=> foreign_deadlock` — Monitor receives a deadlock notification (for more
+  details, see [IMPLEMENTATION.md](IMPLEMENTATION.md) under "Deadlock
+  reporting"). This happens when the monitored service is dependent on a
+  deadlock detected by another monitor.
 - `release X` — message indicating that a worker of a replicated service has
-  finished its task and is ready to receive a query (the encoding of replicated
+  finished its task and is ready to receive a query. (The encoding of replicated
   services in our formal model is described in *Appendix B* of the companion
-  paper)
-- `waiting N ms` — process is waiting `N` milliseconds
+  paper.)
+- `waiting N ms` — process is waiting `N` milliseconds.
 
 Erlang processes are identified as follows:
 
