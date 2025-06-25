@@ -10,7 +10,7 @@ leading to a deadlock).
 
 The execution of a test scenario begins with a number of initial `gen_server`
 calls (a.k.a. queries, in the terminology of the companion paper) to selected
-services starting independent *sessions*. Here, by "session" we mean the
+services starting independent *sessions*. In this context, a "session" means the
 collection of all service actions that were (possibly indirectly) caused by a
 single initial call. For instance, if service `A` initiates a call to `B`, which
 then in turns invokes `C`, we consider that a single session.
