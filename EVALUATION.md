@@ -275,6 +275,7 @@ docker run --rm ddmon ./ddmon scenarios/example.conf
 For more information on using the testing DSL, see the documentation in
 [SCENARIOS.md](SCENARIOS.md).
 
+
 # Using DDMon to monitor a `gen_server`-based application
 
 Please see the documentation in [EXAMPLE.md](EXAMPLE.md).
