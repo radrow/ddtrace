@@ -38,8 +38,8 @@ defmodule MicrochipFactory do
 
     # How long a single cascade of calls should be
     session_size = 30
-    # At what point a session should clash with another
-    session_cut = 26
+    # At what point sessions should clash with others
+    session_cut = 23
 
     # Create Producers
     _prods = for idx <- 0..session_size, sess <- [:a, :b, :c], into: %{} do
@@ -59,13 +59,15 @@ defmodule MicrochipFactory do
     _insps = for sess <- [:a, :b, :c] do
       name = {:via, Registry, {:factory, {:insp, sess}}}
 
+      cut_target = :rand.uniform(session_size - session_cut + 1) + session_cut - 1
+
       next_sess = case sess do
                     :a -> :b
                     :b -> :c
                     :c -> :a
                   end
 
-      prod_ref = {:via, Registry, {:factory, {:prod, next_sess, session_cut}}}
+      prod_ref = {:via, Registry, {:factory, {:prod, next_sess, cut_target}}}
       MicrochipFactory.Inspector.start_link(name, prod_ref)
     end
 
