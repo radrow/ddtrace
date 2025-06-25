@@ -128,11 +128,15 @@ callbacks](https://www.erlang.org/doc/apps/stdlib/gen_statem.html#state-callback
   Therefore, in the implementation, `ddmon` simply sends such probes
   sequentially.
 
-The monitor internally distinguishes calls forwarded by other monitors from
-external ones (e.g. unmonitored services) by wrapping messages with
-`{?MONITORED_CALL, Msg}`, where `?MONITORED_CALL` is a constant Erlang atom
-defined in `src/ddmon.hrl`, and `Msg` is the call payload. This way monitors
-avoid polluting unmonitored parts of the network with probes.
+A practical difference w.r.t. the theory in the paper is that the DDMon monitor
+implementation distinguishes `gen_server` calls forwarded by other monitors from
+calls coming from unmonitored processes: this is achieved by wrapping each
+message `Msg` sent by a monitored service with `{?MONITORED_CALL, Msg}`, where
+`?MONITORED_CALL` is a constant Erlang atom defined in `src/ddmon.hrl`. This
+way, a monitored system can be deployed to serve `gen_server` calls coming from
+"external" (and unmonitored) clients; the "external" clients will never receive
+any monitoring probe --- but if one of their calls leads to a deadlock, then the
+deadlock will be detected by DDMon.
 
 #### Implementation of the deadlock monitoring algorithm
 
@@ -161,17 +165,33 @@ by `gen_server` (`gen_server:request_id_collection()`). This lets us
 conveniently manage the list of waiting services and provides us with a handle
 to properly forward responses.
 
-Rules from *Figure 12* in the companion paper are implemented by the state
-callbacks of `ddmon`.
+The deadlock detection monitoring rules in *Figure 12* in the companion paper
+are implemented by the state callbacks of `ddmon`.
 
-After a deadlock is identified, monitors engage in additional communication to
-propagate the alarm and finally report it to initial callers. This communication
-is not covered in the paper, as it is used to only to report deadlocks, not to
-detect them. Deadlock notifications are propagated in a similar manner to
-probes, except that they are sent as `gen_server` responses of form `{?DEADLOCK,
-DL}` where `?DEADLOCK` is a constant defined in `ddmon.hrl` and `DL` is a
-deadlocked set. Deadlock notifications do not reach monitored services — only
-monitors and unmonitored callers receive it.
+##### Deadlock reporting
+
+Whenever a DDMon monitor detects a deadlock, it begins a _deadlock reporting_
+phase. In the companion paper, this phase is modelled as setting the `alarm`
+field of the monitor state to `true`. In DDMon, instead, monitors engage in
+additional communications to propagate the deadlock alarm. These additional
+communications are not formalised in the paper, as they are an implementation
+detail for deadlock reporting and they do not influence deadlock detection.
+
+More precisely, when a DDMon monitor detects a deadlock, the monitor sends
+deadlock notifications in a similar manner to probes --- except that such
+deadlock notifications are sent as `gen_server` responses of the form
+`{?DEADLOCK, DL}` where `?DEADLOCK` is a constant defined in `ddmon.hrl` and
+`DL` is the set of PIDs forming the deadlock cycle. Such deadlock notifications
+never reach the services overseen by the monitors: only monitors see and
+propagate such notifications.
+
+This deadlock notification mechanism allows an unmonitored Erlang process to be
+optionally notified whenever one of its `gen_server` calls results in a
+deadlock. This feature is used by our testing and example scripts to print
+deadlock reports on the console. (See e.g. [EXAMPLE.md](EXAMPLE.md) and
+[example-system/lib/microchip_factory.ex](example-system/lib/microchip_factory.ex),
+where the optional `:monitored` parameter enables the reception and
+visualisation of deadlock notifications.)
 
 ## Testing scenarios
 
@@ -182,10 +202,10 @@ the scenario DSL, the visualisation of logs, supervision, and examples.
 
 - `src/ansi_color.erl` — ANSI coloring and formatting.
 - `src/tracer` — Erlang debugging process that inspects events in a simulated network.
-- `src/scenario` — Entrypoint for benchmarks and tests. parses scenario files,
+- `src/scenario` — Entry point for benchmarks and tests: parses scenario files,
   applies preprocessing, runs experiments and handles results.
 - `src/logging.erl` — Visualisation of logs produced by the tracer.
-- `src/scenario_gen.erl` — Generator of large scenarios from pre-defined
+- `src/scenario_gen.erl` — Generator of large scenarios from predefined
   templates. Used in large benchmarks.
 - `lib/test_server.ex` — Generic server evaluating the scenario DSL.
 - `lib/main.ex` — Command line interface for running scenarios.
