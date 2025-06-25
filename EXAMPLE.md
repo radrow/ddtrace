@@ -8,43 +8,51 @@ generic servers, i.e. the `call` and `cast` callbacks. Timeouts, deferred
 responses (`no_reply`) and pooled calls through `reqids` are not covered by the
 prototype yet.
 
-The current version of DDMon is instrumented as follows, depending on the
-language used to write each `gen_server` instance:
+To instrument an Erlang or Elixir program with DDMon monitors, you'll need to
+follow these instructions, which depend on the language used to write each
+`gen_server` instance:
 
-- In the case of Elixir files,  it suffices to add the following line at the top
-  of the file, immediately after `use GenServer`:
+- In the case `gen_server`s implemented in Elixir,  it suffices to add the
+  following line at the top of the file, immediately after `use GenServer`:
 
   ```elixir
   alias :ddmon, as: GenServer
   ```
 
-- In the case of Erlang files, DDMon is instrumented by replacing all references
-  to the `gen_server` module with `ddmon`. (This is necessary because Erlang
-  lacks the `alias` directive provided by Elixir.)
+- In the case of `gen_server`s written in Erlang, you will need to
+  find-and-replace all references to the `gen_server` module with `ddmon`. (This
+  is necessary because Erlang lacks the `alias` directive provided by Elixir.)
 
-We provide an example of how DDMon is applied to a simple distributed system. We
-included it not just for its sole evaluation, but also as a simple reference for
-custom experiments, which we encourage to try.
+### Example: monitoring a microchip factory application
 
-The example is an Elixir application in the `example-system` directory (see its
-[README](example-system/README.md)). The application implements a simple
-distributed system where Producers construct values ("microchips") and ask
-Inspectors to "validate" their produce before it is returned to the caller.
-Producers may call other Producers in order to construct return values to
-received calls.
+We now present an example showing how DDMon can monitor a distributed
+application. This simple example serves as a starting point for further
+experiments, which we encourage to try.
 
-We implement two example interactions with this application.
+The example is an Elixir application available the `example-system` directory
+(see its [README](example-system/README.md)). The application implements a
+simple distributed system where Producers are requested to construct and return
+objects representing microchips; before responding to such requests, each
+Producer asks an Inspector to validate the microchip. Notably, Producers may
+call other Producers in order to construct and return a requested microchip;
+moreover, when a Producer asks an Inspector to validate a microchip, the
+Inspector invokes a Producer to perform the validation.
 
-### Small case
+We implement two variations of this example: a small version (with just 2
+producers and inspectors) and a larger version (with a much larger number of
+producers).
 
-This case includes two Producers (tagged 1 and 2) and two Inspectors (tagged 1
-and 2 as well). Inspectors 1 and 2 validate values produced by Producers 1 and 2
-respectively by comparing them to metadata provided by Producers 2 and 1
-respectively (note that the id numbers are flipped).
+### Small version
 
-There are two scenarios which may nondeterministically occur when the example
-application runs, depending on how the calls and responses between `gen_servers`
-are scheduled: the run may complete successfully, or it may deadlock.
+This case includes two Producers (with ids 1 and 2) and two Inspectors (with ids
+1 and 2 as well). Inspectors 1 and 2 validate values produced by Producers 1 and
+2 respectively by comparing them to metadata provided by Producers 2 and 1
+respectively (note that the numerical ids are flipped).
+
+There are two scenarios which may nondeterministically occur when this small
+example application runs, depending on how the calls and responses between
+`gen_servers` are scheduled: the run may complete successfully, or it may
+deadlock.
 
 - **Execution without deadlock:**
 
@@ -75,8 +83,8 @@ are scheduled: the run may complete successfully, or it may deadlock.
   deadlock has occurred. When this happens, the application will end with a
   **"Timeout"** message.
 
-To execute the application, run the following command in the `ddmon` root
-directory:
+To execute the small example application, run the following command in the
+`ddmon` root directory:
 
 ```bash
 docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
@@ -84,28 +92,33 @@ docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.s
 
 If both Producers' calls receive a response, you should see a green **Success**
 message. If a deadlock occurs, you should see a yellow **Timeout** message. You
-can repeat the command above multiple times to observe both possible outcomes.
+should **repeat the command above multiple times** to observe both possible
+outcomes.
 
 **NOTE:** at this stage the application is *not* monitored yet, and therefore,
-the deadlock is not detected. Moreover, since the deadlock is nondeterministic
-(due to nondeterministic scheduling by the Erlang VM, and some randomised waits
-in the code), you may need to **try several times** before you can observe both
-outcomes described above.
+the deadlock is not detected: the timeout is the only hint towards diagnosing
+the problem.
 
-### Large case
+### Larger version
 
 This case illustrates a larger setup with 93 Producers and 3 Inspectors. Here,
-deadlocks may involve different services across different executions. To evaluate
-it, run the following command:
+deadlocks may involve different services across different executions.
 
+To execute the larger example application, run the following command in the
+`ddmon` root directory:
 
 ```bash
 docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_many"'
 ```
 
-Again, several tries may be needed to reproduce deadlocks and successful executions.
+You should **repeat the command above multiple times** to observe a variety of
+successful executions (terminating with "Success") and deadlocking executions
+(terminating with "Timeout"). In this case, the most likely outcome is that the
+application will deadlock, although each execution may deadlock at a different
+point, and the deadlock may involve a different set of Producers and Consumers.
 
-## Instrumenting the example `gen_server`s with DDMon
+
+## Instrumenting the example `gen_server`s with DDMon monitors
 
 To instrument the example application with DDMon, edit the following files:
 
@@ -133,27 +146,54 @@ This replacement can also be performed using `sed`:
 sed -i 's/  # alias :ddmon/  alias :ddmon/g' ./example-system/lib/microchip_factory/*.ex
 ```
 
-After that, you should **rebuild the docker image**:
+After that, you will need to **rebuild the docker image**:
 
 ```bash
 docker build -t ddmon .
 ```
 
-Now you can try rerunning the experiment several times with an additional
-`:monitored` parameter (replace `start_two` with `start_many` to run the large
-experiment):
+Now you can try rerunning the application several times with the additional
+`:monitored` parameter, which enables deadlock reporting on the terminal.
+(For more details about this parameter, see at the end of this file.)
 
-```bash
-docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two :monitored"'
+- Small version:
+  ```bash
+  docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two :monitored"'
+  ```
+
+- Large version:
+  ```bash
+  docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_many :monitored"'
+  ```
+
+If no deadlock occurs, you should get a **Success** output exactly as before.
+Instead, if the system deadlocks, you should see a red **Deadlock** message
+(instead of "Timeout"), followed by a list of PIDs: those are the PIDs of the
+processes that formed the deadlock cycle. The symbol `<==` marks the PID of the
+process whose monitor reported the deadlock. For instance, the output may look
+as follows (for the small version of the example):
+
+```
+Deadlock:
+- :prod1 <==
+- :insp2
+- :prod2
+- :insp1
+- :prod1 <==
 ```
 
-The **Success** output should look exactly as before. However, if the system
-deadlocks, you should see a red **Deadlock** message (instead of "Timeout"),
-followed by a list of PIDs: those are the PIDs of the processes involved in the
-deadlock. Symbol `<==` marks a process that reported the deadlock.
+(For more details, and for interpreting the PIDs in the deadlock reports, see
+[example-system/README.md](example-system/README.md).)
 
-The `:monitored` parameter instructs the script interacting with the system to
-subscribe to deadlock reports. Without this parameter (default), deadlocks are
-not reported in order to preserve compatibility w.r.t. communication with
-external callers. Note the that this parameter *must not* be provided if the
-system is not monitored (i.e. when the `alias` directives are present).
+Observe that in the large version of the example only a subset of the
+application PIDs may be part of the actual deadlock cycle --- although the whole
+application may be stuck, and other PIDs may be awaiting a response from the
+deadlocked PIDs.
+
+*NOTE:* the `:monitored` parameter instructs the scripts that run the example
+application to subscribe to the deadlock reports generated by DDMon, and
+visualise them on the console. If DDMon is enabled but the `:monitored`
+parameter is omitted (which is the default), then deadlocks are still detected
+by DDMon, but the corresponding deadlock reports are not displayed. Importantly,
+the `:monitored` parameter must *only* be used if the system is monitored by
+DDMon (i.e., if the `alias` directives described above are present).
