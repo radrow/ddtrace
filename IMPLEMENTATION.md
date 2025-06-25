@@ -51,9 +51,10 @@ The following steps happen when a `gen_server` is started via `ddmon:start`:
 
 ### Operation of a monitored service
 
-The wrapped generic server is started through the `gen_monitored` module. This
-step not strictly needed, but is useful for integration with unmonitored
-components of the system and makes examples simpler.
+The wrapped generic server is started through the `gen_monitored` module which
+operates exactly like `gen_server`, except it sets a couple variables in the
+process dictionary. This step not strictly needed, but is useful for integration
+with unmonitored components of the system and makes examples simpler.
 
 ### Operation of the monitor
 

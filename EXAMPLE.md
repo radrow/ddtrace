@@ -22,21 +22,20 @@ language used to write each `gen_server` instance:
   to the `gen_server` module with `ddmon`. (This is necessary because Erlang
   lacks the `alias` directive provided by Elixir.)
 
-Below is an example of how DDMon is applied to a simple distributed system. We
-provide it not just for its sole evaluation, but also as a simple reference for
+We provide an example of how DDMon is applied to a simple distributed system. We
+included it not just for its sole evaluation, but also as a simple reference for
 custom experiments, which we encourage to try.
 
-## Example: microchip factory
-
-We provide an example Elixir application in the `example-system` directory (see
-the [README](example-system/README.md)). The application implements a simple
-distributed system where Producers construct values and ask Inspectors to
-"validate" their produce before it is returned to the caller. Producers may call
-other Producers in order to construct return values to received calls.
+The example is an Elixir application in the `example-system` directory (see its
+[README](example-system/README.md)). The application implements a simple
+distributed system where Producers construct values ("microchips") and ask
+Inspectors to "validate" their produce before it is returned to the caller.
+Producers may call other Producers in order to construct return values to
+received calls.
 
 We implement two example interactions with this application.
 
-#### Small case
+### Small case
 
 This case includes two Producers (tagged 1 and 2) and two Inspectors (tagged 1
 and 2 as well). Inspectors 1 and 2 validate values produced by Producers 1 and 2
@@ -76,7 +75,8 @@ are scheduled: the run may complete successfully, or it may deadlock.
   deadlock has occurred. When this happens, the application will end with a
   **"Timeout"** message.
 
-To execute the application, run the following command:
+To execute the application, run the following command in the `ddmon` root
+directory:
 
 ```bash
 docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.start_two"'
@@ -89,10 +89,10 @@ can repeat the command above multiple times to observe both possible outcomes.
 **NOTE:** at this stage the application is *not* monitored yet, and therefore,
 the deadlock is not detected. Moreover, since the deadlock is nondeterministic
 (due to nondeterministic scheduling by the Erlang VM, and some randomised waits
-in the code), you may need to try several times before you can observe both
+in the code), you may need to **try several times** before you can observe both
 outcomes described above.
 
-#### Large case
+### Large case
 
 This case illustrates a larger setup with 93 Producers and 3 Inspectors. Here,
 deadlocks may involve different services across different executions. To evaluate
@@ -105,7 +105,7 @@ docker run --rm ddmon bash -c 'cd example-system; mix run -e "MicrochipFactory.s
 
 Again, several tries may be needed to reproduce deadlocks and successful executions.
 
-### Instrumenting the example `gen_server`s with DDMon
+## Instrumenting the example `gen_server`s with DDMon
 
 To instrument the example application with DDMon, edit the following files:
 
@@ -130,10 +130,10 @@ defmodule MicrochipFactory.Producer do
 This replacement can also be performed using `sed`:
 
 ```bash
-sed -i 's/  # alias :ddmon/  alias :ddmon/g' lib/microchip_factory/*.ex
+sed -i 's/  # alias :ddmon/  alias :ddmon/g' ./example-system/lib/microchip_factory/*.ex
 ```
 
-After that, you should rebuild the docker image:
+After that, you should **rebuild the docker image**:
 
 ```bash
 docker build -t ddmon .
@@ -155,4 +155,5 @@ deadlock. Symbol `<==` marks a process that reported the deadlock.
 The `:monitored` parameter instructs the script interacting with the system to
 subscribe to deadlock reports. Without this parameter (default), deadlocks are
 not reported in order to preserve compatibility w.r.t. communication with
-external callers.
+external callers. Note the that this parameter *must not* be provided if the
+system is not monitored (i.e. when the `alias` directives are present).
