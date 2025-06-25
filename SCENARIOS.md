@@ -10,11 +10,16 @@ leading to a deadlock).
 
 The execution of a test scenario begins with a number of initial `gen_server`
 calls (a.k.a. queries, in the terminology of the companion paper) to selected
-services starting independent *sessions*. The data transmitted in each call
-contains instructions on how the data is supposed to be processed, including
-making further calls, waiting, or sending a response. This way a single
-`gen_server` instance created by the testing DSL can reproduce a variety of
-possible behaviours and deadlocks that may occur in real systems.
+services starting independent *sessions*. Here, by "session" we mean the
+collection of all service actions that were (possibly indirectly) caused by a
+single initial call. For instance, if service `A` initiates a call to `B`, which
+then in turns invokes `C`, we consider that a single session.
+
+The data transmitted in each call contains instructions on how the data is
+supposed to be processed, including making further calls, waiting, or sending a
+response. This way a single `gen_server` instance created by the testing DSL can
+reproduce a variety of possible behaviours and deadlocks that may occur in real
+systems.
 
 See *Appendix A.1* of the companio paper for additional information.
 

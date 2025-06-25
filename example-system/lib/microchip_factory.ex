@@ -56,8 +56,8 @@ defmodule MicrochipFactory do
     end
 
     # Create inspectors
-    _insps = for sess <- [:a, :b, :c] do
-      name = {:via, Registry, {:factory, {:insp, sess}}}
+    _insps = for idx <- 0..1, sess <- [:a, :b, :c] do
+      name = {:via, Registry, {:factory, {:insp, sess, idx}}}
 
       cut_target = :rand.uniform(session_size - session_cut + 1) + session_cut - 1
 
