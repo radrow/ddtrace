@@ -10,8 +10,10 @@ local installation as described in [README.md](README.md).
 ## Preparation
 
 For this evaluation, we recommend building and running DDMon within a
-[docker](https://www.docker.com/) container. To build the docker image, run the
-following commands:
+[docker](https://www.docker.com/) container. On Linux, make sure you have the
+docker service running. On Mac, make sure you have Docker Desktop open.
+
+To build the docker image, run the following commands:
 
 ```bash
 mkdir -p output          # Creates a directory for the plots and other data

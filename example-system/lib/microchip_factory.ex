@@ -9,11 +9,14 @@ defmodule MicrochipFactory do
   Simple example with two services
   """
   def start_two(monitored \\ false) do
+    # Starting namespace registry
     Registry.start_link(keys: :unique, name: :factory)
 
+    # Starting producers
     {:ok, _prod1} = MicrochipFactory.Producer.start_link({:via, Registry, {:factory, :prod1}}, 3, [])
     {:ok, _prod2} = MicrochipFactory.Producer.start_link({:via, Registry, {:factory, :prod2}}, 5, [])
 
+    # Starting inspectors
     {:ok, _insp1} = MicrochipFactory.Inspector.start_link(
       {:via, Registry, {:factory, :insp1}},
       {:via, Registry, {:factory, :prod1}}
@@ -23,6 +26,7 @@ defmodule MicrochipFactory do
       {:via, Registry, {:factory, :prod2}}
     )
 
+    # Initial calls
     calls = [{{:via, Registry, {:factory, :prod1}}, {:via, Registry, {:factory, :insp2}}},
              {{:via, Registry, {:factory, :prod2}}, {:via, Registry, {:factory, :insp1}}}
             ]
@@ -34,14 +38,15 @@ defmodule MicrochipFactory do
   Complex example with many producers and a few inspectors
   """
   def start_many(monitored \\ false) do
-    Registry.start_link(keys: :unique, name: :factory)
-
     # How long a single cascade of calls should be
     session_size = 30
     # At what point sessions should clash with others
     session_cut = 23
 
-    # Create Producers
+    # Starting namespace registry
+    Registry.start_link(keys: :unique, name: :factory)
+
+    # Starting producers in three sessions
     _prods = for idx <- 0..session_size, sess <- [:a, :b, :c], into: %{} do
       name = {:via, Registry, {:factory, {:prod, sess, idx}}}
 
@@ -55,28 +60,32 @@ defmodule MicrochipFactory do
       {{sess, idx}, prod}
     end
 
-    # Create inspectors
+    # Starting inspectors in three sessions
     _insps = for sess <- [:a, :b, :c] do
       name = {:via, Registry, {:factory, {:insp, sess}}}
 
+      # Sample the actual clash point
       cut_target = :rand.uniform(session_size - session_cut + 1) + session_cut - 1
 
+      # The session to clash with
       next_sess = case sess do
                     :a -> :b
                     :b -> :c
                     :c -> :a
                   end
 
+      # Producer to query for metadata
       prod_ref = {:via, Registry, {:factory, {:prod, next_sess, cut_target}}}
+
       MicrochipFactory.Inspector.start_link(name, prod_ref)
     end
 
+    # All producers in each session share the inspector
     calls = for sess <- [:a, :b, :c] do
       {{:via, Registry, {:factory, {:prod, sess, 0}}},
        {:via, Registry, {:factory, {:insp, sess}}}
       }
     end
-
     do_calls(calls, monitored, 4000)
   end
 
@@ -85,6 +94,11 @@ defmodule MicrochipFactory do
   ### Printing and initiating
   ### ==========================================================================
 
+  @doc """
+  Performs a sequence of initial calls to the system. Calls are sent in parallel.
+  If any results in a timeout or a deadlock, those are reported; otherwise a
+  success message is displayed.
+  """
   defp do_calls(calls, monitored, timeout) do
     reqids = for {prod, insp} <- calls do
       :timer.sleep(:rand.uniform(80 * length(calls)))
