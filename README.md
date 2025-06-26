@@ -10,10 +10,10 @@ evaluating DDMon.
 for DDMon. In this case, you can just follow the instructions in the following
 files, and skip the rest of this file.
 
-- [EVALUATION.md](EVALUATION.md) for setting up the Docker image and reproducing
-  the plots and listings in the companion paper.
-- [EXAMPLE.md](EXAMPLE.md) to see how DDMon can be used to monitor applications
-  beyond those discussed the companion paper.
+- [EVALUATION.md](EVALUATION.md) for setting up the Docker image, "kicking the
+  tires," and reproducing the plots and listings in the companion paper.
+- [EXAMPLE.md](EXAMPLE.md) to see how DDMon can be used for monitoring
+  applications based on the `gen_server` behaviour.
 - [SCENARIOS.md](SCENARIOS.md) for the documentation of the testing DSL used in
   the paper to benchmark DDMon to various randomised scenarios of varying size.
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) for details about the DDMon
