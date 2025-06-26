@@ -57,8 +57,8 @@ please send us the entire output. If you run into permission issues, please
 delete the `output` folder and try again.
 
 After the program has finished, the `output` folder should contain PDF files
-with various plots (e.g. `output/figure_15_a.pdf` or
-`output/fig_16_b/conditional__1000__2619635.pdf`; name of the latter may
+with various plots (e.g. `output/fig_15_a.pdf` or
+`output/fig_16_b/conditional__1000__2619635.pdf`; the name of the latter may
 differ).
 
 Please try visualising such PDF files with a PDF viewer: if the files contain
@@ -116,7 +116,7 @@ More specifically, the generated output should satisfy these requirements:
   different.
 
 
-## Reproducing the results from the paper
+## Reproducing the results in the paper
 
 ### Reproducing the plots in *Figures 15 and 16*
 
