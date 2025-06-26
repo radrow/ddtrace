@@ -547,7 +547,7 @@ run_many(Bench, Opts) ->
              _ <- lists:seq(1, Reps)
         ],
 
-    MAX_SIZE = 100000, % ORIGINAL: 150000
+    MAX_SIZE = 150000,
 
     Printer ! {workers, [W || {_, _, W, _} <- Workers], MAX_SIZE},
     Stats = get_results(scenario_gen:shuffle(Workers), MAX_SIZE, Printer),
