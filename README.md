@@ -99,3 +99,21 @@ information, see `./ddmon --help`.
 
 See [SCENARIOS.md](SCENARIOS.md) for the documentation on how the DDMon scenario
 tests work, and instructions on how to define new test scenarios.
+
+## Evaluating the artifact
+
+Now, you can move to [EVALUATION.md](EVALUATION.md) which contains instructions
+on how to evaluate the artifact. Note that the instructions are for docker
+build. To run the provided commands using a local build, remove the docker part:
+for example
+
+```bash
+docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh small
+```
+
+should become
+
+```bash
+./bench.sh small
+```
+

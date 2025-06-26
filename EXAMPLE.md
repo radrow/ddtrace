@@ -23,7 +23,7 @@ follow these instructions, which depend on the language used to write each
   find-and-replace all references to the `gen_server` module with `ddmon`. (This
   is necessary because Erlang lacks the `alias` directive provided by Elixir.)
 
-### Example: monitoring a microchip factory application
+## Example: monitoring a microchip factory application
 
 We now present an example showing how DDMon can monitor a distributed
 application. This simple example serves as a starting point for further

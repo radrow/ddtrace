@@ -6,6 +6,8 @@ running within a [docker](https://www.docker.com/) container.
 As an alternative, similar commands can be executed locally, after performing a
 local installation as described in [README.md](README.md).
 
+The file [BADGING.md](BADGING.md) contains overview on how we address
+requirement for each ACM artifact badge.
 
 ## Preparation
 
@@ -126,7 +128,10 @@ docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 
 **Note:** the command above takes about **one hour** to complete on a computer
 with Intel Core i7-1185G7 (8 CPU cores) and **32GB of RAM**, running Fedora 42.
-This is what we used to obtain the results in the paper.
+This is what we used to obtain the results in the paper. If the command crashes
+and displays `/app/bench.sh: line 30: 1193 Killed "$@"` anywhere in the output,
+it means that the program has likely run out of memory. If that happens, delete
+the `output` folder and try the smaller variant described below.
 
 For a less resource-intensive variant (which may less accurately align to the
 results in the paper), you can run the following command instead: it takes about
