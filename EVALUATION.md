@@ -165,8 +165,8 @@ benchmark scripts above with those in the paper.
 The plots produced for Figure 15 by our benchmarking script may be slightly
 different w.r.t. the paper, but the overall trends should be the same:
 
-- In *Figures 15a, 15b and 15c*, the orange line should show values greater than
-  blue and green lines, while red line should be above the orange line.
+- In *Figures 15a, 15b and 15c*, the orange line should show values greater or
+  equal to blue and green lines, while red line should be above the orange line.
 - In *Figures 15a and 15b*, the blue line should present roughly the same values
   as the green line.
 - In *Figure 15b*, the blue and green lines should be close to zero.
