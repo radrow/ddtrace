@@ -94,41 +94,47 @@ defmodule MicrochipFactory do
   ### Printing and initiating
   ### ==========================================================================
 
-  @doc """
-  Performs a sequence of initial calls to the system. Calls are sent in parallel.
-  If any results in a timeout or a deadlock, those are reported; otherwise a
-  success message is displayed.
-  """
   defp do_calls(calls, monitored, timeout) do
+    # Performs a sequence of initial calls to the system. Calls are sent in
+    # parallel. If any results in a timeout or a deadlock, those are reported;
+    # otherwise a success message is displayed.
+
+    # Subscribe to deadlocks if requested
+    if monitored, do: (for {prod, _} <- calls, do: :ddmon.subscribe_deadlocks(prod))
+
+    # Perform the calls
     reqids = for {prod, insp} <- calls do
       :timer.sleep(:rand.uniform(80 * length(calls)))
-
-      case monitored do
-        :monitored -> :ddmon.send_request_report(prod, {:produce_microchip, insp})
-        false -> :ddmon.send_request(prod, {:produce_microchip, insp})
-      end
+      :ddmon.send_request(prod, {:produce_microchip, insp})
     end
 
+    # Wait for responses
     resps = for reqid <- reqids do
-      :gen_server.receive_response(reqid, timeout)
+      :ddmon.wait_response_report(reqid, timeout)
     end
 
-    result = case Enum.find(resps, fn
-                   {:reply, {:"$ddmon_deadlock_spread", _}} -> true
-                   _ -> false
-                 end) do
-               {:reply, {:"$ddmon_deadlock_spread", dl}} -> {:deadlock, dl}
-               _ ->
-                 if Enum.member?(resps, :timeout) do
-                   :timeout
-                 else
-                   resps = for {:reply, resp} <- resps do
-                     resp
-                   end
-                   {:success, resps}
-                 end
-             end
+    # Check the responses:
+    # - If any call resulted in a deadlock, report a deadlock
+    # - If any call resulted in a timeout, report a timeout
+    # - Otherwise, report results from all calls
+    result =
+      case Enum.find(resps, fn
+            {:"$ddmon_deadlock_spread", _} -> true
+            _ -> false
+          end)
+      do
+      {:"$ddmon_deadlock_spread", dl} ->
+        {:deadlock, dl}
+      _ ->
+        if Enum.member?(resps, :timeout) do
+          :timeout
+        else
+          resps = for {:reply, resp} <- resps, do: resp
+          {:success, resps}
+        end
+    end
 
+    # Make it pretty
     print_result(result)
   end
 

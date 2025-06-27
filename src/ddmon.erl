@@ -14,11 +14,15 @@
 -export([ call/2, call/3
         , cast/2, stop/3
         , send_request/2, send_request/4
+        , receive_response/1, receive_response/2, receive_response/3
+        , wait_response/1, wait_response/2, wait_response/3
         ]).
 
 %% Helper API
 -export([ call_report/2, call_report/3
         , send_request_report/2, send_request_report/4
+        , wait_response_report/2, wait_response_report/3
+        , subscribe_deadlocks/1
         ]).
 
 %% gen_statem callbacks
@@ -42,6 +46,7 @@
         , req_tag :: gen_server:reply_tag() | undefined
         , req_id :: gen_statem:request_id() | undefined
         , waitees :: gen_server:request_id_collection()
+        , deadlock_subscribers :: list(pid())
         }).
 
 -record(deadstate,
@@ -49,6 +54,7 @@
         , deadlock :: list(pid())
         , req_id :: gen_statem:request_id()
         , foreign = false :: boolean()
+        , deadlock_subscribers :: list(pid())
         }).
 
 state_get_worker(#state{worker = Worker}) ->
@@ -170,12 +176,70 @@ send_request(Server, Request) ->
 send_request(Server, Request, Label, ReqIdCollection) ->
     gen_statem:send_request(Server, Request, Label, ReqIdCollection).
 
-
 send_request_report(Server, Request) ->
     gen_statem:send_request(Server, {?MONITORED_CALL, Request}).
 
 send_request_report(Server, Request, Label, ReqIdCollection) ->
     gen_statem:send_request(Server, {?MONITORED_CALL, Request}, Label, ReqIdCollection).
+
+
+receive_response(ReqId) ->
+    gen_statem:receive_response(ReqId).
+
+receive_response(ReqId, Timeout) ->
+    gen_statem:receive_response(ReqId, Timeout).
+
+receive_response(ReqIdCollection, Timeout, Delete) ->
+    gen_statem:receive_response(ReqIdCollection, Timeout, Delete).
+
+
+wait_response(ReqId) ->
+    gen_statem:receive_response(ReqId).
+
+wait_response(ReqId, Timeout) ->
+    gen_statem:receive_response(ReqId, Timeout).
+
+wait_response(ReqIdCollection, Timeout, Delete) ->
+    gen_statem:receive_response(ReqIdCollection, Timeout, Delete).
+
+-define(DL_CHECK, 100).
+wait_response_report(ReqId, Timeout) ->
+    Loop = fun Rec(TO) when TO < 0 ->
+                   timeout;
+               Rec(TO) ->
+                   case gen_statem:wait_response(ReqId, ?DL_CHECK) of
+                       timeout ->
+                           receive
+                               {?DEADLOCK, DL} -> {?DEADLOCK, DL}
+                           after 0 ->
+                                   TO1 = if is_integer(TO) -> TO - ?DL_CHECK; true -> TO end,
+                                   Rec(TO1)
+                           end;
+                       no_request -> no_request;
+                       R = {Res, _} when Res =:= reply orelse Res =:= error ->
+                           R
+                   end
+           end,
+    Loop(Timeout).
+
+wait_response_report(ReqIdCollection, Timeout, Delete) ->
+    Loop = fun Rec(TO) when TO < 0 ->
+                   timeout;
+               Rec(TO) ->
+                   case gen_statem:wait_response(ReqIdCollection, ?DL_CHECK, Delete) of
+                       timeout ->
+                           receive
+                               {?DEADLOCK, DL} -> {?DEADLOCK, DL}
+                           after 0 ->
+                                   TO1 = if is_integer(TO) -> TO - ?DL_CHECK; true -> TO end,
+                                   Rec(TO1)
+                           end;
+                       no_request -> no_request;
+                       R = {{Res, _}, _, _} when Res =:= reply orelse Res =:= error ->
+                           R
+                   end
+           end,
+    Loop(Timeout).
 
 
 cast(Server, Message) ->
@@ -184,6 +248,10 @@ cast(Server, Message) ->
 
 stop(Server, Reason, Timeout) ->
     gen_server:stop(Server, Reason, Timeout).
+
+
+subscribe_deadlocks(Server) ->
+    gen_statem:cast(Server, {?DL_SUBSCRIBE, self()}).
 
 %%%======================
 %%% gen_statem Callbacks
@@ -198,7 +266,8 @@ init({Module, Args, Options}) ->
                 #state{worker = Pid,
                        waitees = gen_server:reqids_new(),
                        req_tag = undefined,
-                       req_id = undefined
+                       req_id = undefined,
+                       deadlock_subscribers = []
                       },
             put(?PROBE_DELAY, proplists:get_value(probe_delay, DlsOpts, -1)),
             {ok, unlocked, State};
@@ -219,12 +288,18 @@ callback_mode() ->
 unlocked(enter, _, _) ->
     keep_state_and_data;
 
+unlocked(cast, {?DL_SUBSCRIBE, Who}, State = #state{deadlock_subscribers = Subs}) ->
+    {keep_state, State#state{deadlock_subscribers = [Who|Subs]}};
+
 unlocked({call, From}, '$get_child', #state{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
 
 %% Our service wants a call to itself (either directly or the monitor)
-unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker, waitees = Waitees})
+unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker
+                                                                , waitees = Waitees
+                                                                , deadlock_subscribers = Subs
+                                                                })
   when Server =:= Worker orelse Server =:= self() ->
     [ begin
           gen_statem:reply(W, {?DEADLOCK, [self(), self()]})
@@ -232,7 +307,11 @@ unlocked({call, {Worker, PTag}}, {_Msg, Server}, _State = #state{worker = Worker
       || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
     {next_state, deadlocked,
-     #deadstate{worker = Worker, deadlock = [self(), self()], req_id = PTag}
+     #deadstate{ worker = Worker
+               , deadlock = [self(), self()]
+               , req_id = PTag
+               , deadlock_subscribers = Subs
+               }
     };
 
 %% Our service wants a call
@@ -311,6 +390,9 @@ unlocked(info, Msg, State = #state{waitees = Waitees0, worker = Worker}) ->
 locked(enter, _, _) ->
     keep_state_and_data;
 
+locked(cast, {?DL_SUBSCRIBE, Who}, State = #state{deadlock_subscribers = Subs}) ->
+    {keep_state, State#state{deadlock_subscribers = [Who|Subs]}};
+
 locked({call, From}, '$get_child', #state{worker = Worker}) ->
     {keep_state_and_data, {reply, From, Worker}};
 
@@ -361,7 +443,12 @@ locked(info, {'DOWN', _, process, _Worker, _Reason}, _) ->
     keep_state_and_data;
 
 %% Incoming reply
-locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
+locked(info, Msg, State = #state{ worker = Worker
+                                , req_tag = PTag
+                                , req_id = ReqId
+                                , waitees = Waitees
+                                , deadlock_subscribers = Subs
+                                }) ->
     case gen_statem:check_response(Msg, ReqId) of
         no_reply ->
             %% Unknown info. Let the process handle it.
@@ -380,7 +467,13 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
               end
               || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
             ],
-            {next_state, deadlocked, #deadstate{foreign = true, worker = Worker, deadlock = [self() | DL], req_id = ReqId}};
+
+            {next_state, deadlocked, #deadstate{foreign = true
+                                               , worker = Worker
+                                               , deadlock = [self() | DL]
+                                               , req_id = ReqId
+                                               , deadlock_subscribers = Subs
+                                               }};
 
         {reply, Reply} ->
             %% Pass the reply to the process. We are unlocked now.
@@ -391,13 +484,24 @@ locked(info, Msg, State = #state{worker = Worker, req_tag = PTag, req_id = ReqId
     end;
 
 %% Incoming own probe. Alarm! Panic!
-locked(cast, {?PROBE, PTag, Chain}, #state{worker = Worker, req_tag = PTag, req_id = ReqId, waitees = Waitees}) ->
+locked(cast, {?PROBE, PTag, Chain}, #state{ worker = Worker
+                                          , req_tag = PTag
+                                          , req_id = ReqId
+                                          , waitees = Waitees
+                                          , deadlock_subscribers = Subs
+                                          }) ->
+    DL = [self() | Chain],
+
     [ begin
-          gen_statem:reply(W, {?DEADLOCK, [self() | Chain]})
+          gen_statem:reply(W, {?DEADLOCK, DL})
       end
       || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
-    {next_state, deadlocked, #deadstate{worker = Worker, deadlock = [self() | Chain], req_id = ReqId}};
+    {next_state, deadlocked, #deadstate{ worker = Worker
+                                       , deadlock = [self() | Chain]
+                                       , req_id = ReqId
+                                       , deadlock_subscribers = Subs
+                                       }};
 
 %% Incoming probe
 locked(cast, {?PROBE, Probe, Chain}, #state{waitees = Waitees}) ->
@@ -425,7 +529,17 @@ locked(cast, Msg, #state{worker = Worker}) ->
     keep_state_and_data.
 
 %% We are fffrankly in a bit of a trouble
-deadlocked(enter, _OldState, _State) ->
+deadlocked(enter, _OldState, _State = #deadstate{deadlock = DL, deadlock_subscribers = Subs}) ->
+    [ begin
+          Who ! {?DEADLOCK, DL}
+      end
+      || Who <- Subs
+    ],
+    keep_state_and_data;
+
+%% Someone subscribes to deadlocks — well, it just so happens that we have one
+deadlocked(cast, {?DL_SUBSCRIBE, Who}, _State = #deadstate{deadlock = DL}) ->
+    Who ! {?DEADLOCK, DL},
     keep_state_and_data;
 
 deadlocked({call, From}, '$get_child', #deadstate{worker = Worker}) ->

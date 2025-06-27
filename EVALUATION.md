@@ -239,7 +239,8 @@ this will "flatten" the output.
 slightly differently compared to listings in the companion paper.
 
 *NOTE:* the meaning of the scenario execution logs is documented in
-[SCENARIOS.md](SCENARIOS.md).
+[SCENARIOS.md](SCENARIOS.md). The file illustrates a list of further example
+scenarios, including e.g. replicated services as described in *Appendix B*.
 
 
 #### Listings 1 and 2
