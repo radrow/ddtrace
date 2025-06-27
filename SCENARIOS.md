@@ -3,7 +3,7 @@
 In *Section 7* of the companion paper we evaluate DDMon's performance in
 different test scenarios involving various forms of deterministic and
 non-deterministic deadlocks, as well as executions that terminate successfully.
-Each one of such test scenarios is described as a "scenario file" written in a
+Each one of these test scenarios is described as a "scenario file" written in a
 domain-specific language (DSL) which declares a number of services and then
 specifies how they exchange queries and responses with each other (possibly
 leading to a deadlock).
@@ -17,9 +17,9 @@ then in turns invokes `C`, we consider that a single session.
 
 The data transmitted in each call contains instructions on how the data is
 supposed to be processed, including making further calls, waiting, or sending a
-response. This way a single `gen_server` instance created by the testing DSL can
-reproduce a variety of possible behaviours and deadlocks that may occur in real
-systems.
+response. In this way, a single `gen_server` instance created by the testing DSL
+can reproduce a variety of possible behaviours and deadlocks that may occur in
+real systems.
 
 See *Appendix A.1* of the companio paper for additional information.
 
@@ -68,8 +68,8 @@ following format:
 
 ### Example
 
-The following example pictures a scenario of 4 services (numbered `0`, `1`, `2`
-and `3`) involved in two independent sessions (`left` and `right`).
+The following example illustrates a scenario of 4 services (numbered `0`, `1`,
+`2` and `3`) involved in two independent sessions (`left` and `right`).
 
 - `left` begins with a call to the service `0`, which will call `1` for an
   immediate reply, wait for 50 milliseconds, and then call `1` again.
@@ -104,8 +104,8 @@ a call from `3`:
   will terminate with `0` sending a response to `1`, `1` to `2`, `2` to `3` and
   `3` finishing the session `right`.
 - Instead, if `2` sends a query to `1` after `0` receives the initial call from
-  `left`, but before `0` sends its final query to `1`, then inevitably `1`
-  becomes locked on `0` while `0` is locked on `1`, implying a deadlock.
+  `left`, but before `0` sends its final query to `1`, then `1` and `0` become
+  locked on one another, resulting in a deadlock.
 
 
 ## Running scenarios
