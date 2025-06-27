@@ -9,7 +9,7 @@ local installation as described in [README.md](README.md).
 The file [BADGING.md](BADGING.md) contains overview on how we address
 requirements for each ACM artifact badge.
 
-## Preparation
+## Getting started
 
 For this evaluation, we recommend building and running DDMon within a
 [Docker](https://www.docker.com/) container. On Linux, make sure you have the
@@ -120,7 +120,7 @@ If the 3 requirements above are met, then this step of the "Kick the tires"
 assessment is completed.
 
 
-## Reproducing the results in the paper
+## Reproducing the results in the paper: step-by-step instructions
 
 ### Reproducing the plots in *Figures 15 and 16*
 

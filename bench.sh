@@ -152,5 +152,6 @@ do
 done
 
 find output -name "*.pdf" | xargs -n1 chmod 666
+find output -type d | xargs -n1 chmod 777
 
 echo Done
