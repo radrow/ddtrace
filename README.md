@@ -26,23 +26,6 @@ each ACM artifact badge.
 **NOTE:** The following build instructions are tested on GNU/Linux (Ubuntu 24.04
 and 25.04, and Fedora 42) and macOS.
 
-
-## Hardware dependencies
-
-To execute all benchmarks, the following minimal hardware prerequisites need to
-be met:
-
-- 32GB of RAM
-- 23GB of free disc space
-- 8-core CPU (we have tested on 64-bit x86 and M1)
-
-We also provide smaller variants of the largest tests. For those, the following
-should suffice:
-
-- 16GB of RAM
-- 10GB of free disc space
-- 4-core CPU
-
 ## Build prerequisites
 
 - [Erlang/OTP](https://www.erlang.org/), version `26` or higher
