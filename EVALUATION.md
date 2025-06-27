@@ -120,18 +120,21 @@ More specifically, the generated output should satisfy these requirements:
 
 ### Reproducing the plots in *Figures 15 and 16*
 
-To reproduce *Figures 15 and 16* in the paper, please run the following command.
+To reproduce *Figures 15 and 16* in the paper, please delete the `output` folder
+(if present) and run the following command.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
 **Note:** the command above takes about **one hour** to complete on a computer
-with Intel Core i7-1185G7 (8 CPU cores) and **32GB of RAM**, running Fedora 42.
-This is what we used to obtain the results in the paper. If the command crashes
-and displays `/app/bench.sh: line 30: 1193 Killed "$@"` anywhere in the output,
-it means that the program has likely run out of memory. If that happens, delete
-the `output` folder and try the smaller variant described below.
+with Intel Core i7-1185G7 (8 CPU cores), **32GB of RAM**, running Fedora 42. The
+command generates detailed statistics from every experiment, which may take up
+to 20GB of disc space in total. This is what we used to obtain the results in
+the paper. If the command crashes and displays `/app/bench.sh: line 30: 1193
+Killed "$@"` anywhere in the output, it means that the program has likely run
+out of memory. If that happens, delete the `output` folder and try the smaller
+variant described below.
 
 For a less resource-intensive variant (which may less accurately align to the
 results in the paper), you can run the following command instead: it takes about
