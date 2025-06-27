@@ -1,7 +1,7 @@
 # ACM Artifact Review and Badging
 
-In this file, we outline how we address requirements of each ACM artifact badge
-in this project.
+In this file, we outline how we address the requirements of each ACM artifact
+badge.
 
 ## Artifacts Evaluated
 
@@ -20,7 +20,7 @@ in this project.
 #### Consistent
 
 The results in *Figures 15 and 16* as well as *Listings 2, 3 and 4* in the paper
-have been produced according to the instructions in
+can be reproduced according to the instructions in
 [EVALUATION.md](EVALUATION.md).
 
 #### Complete
