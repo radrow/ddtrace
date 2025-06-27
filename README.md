@@ -29,9 +29,10 @@ and 25.04, and Fedora 42).
 - [Erlang/OTP](https://www.erlang.org/), version `26` or higher
 - [Elixir](https://elixir-lang.org/), version `1.14` or higher
 - [Mix](https://hexdocs.pm/mix/Mix.html)
-- [Python 3](https://www.python.org/) with [numpy](https://numpy.org/),
-  [pandas](https://pandas.pydata.org/) and [matplotlib](https://matplotlib.org/)
-  (for plotting benchmark results)
+- [Python 3](https://www.python.org/) with [numpy](https://numpy.org/) (at least
+  2.2), [pandas](https://pandas.pydata.org/) (at least 2.2) and
+  [matplotlib](https://matplotlib.org/) (at least 3.10) --- for plotting
+  benchmark results
 
 
 ### Optional: script for a fresh local installation of Erlang and Elixir
