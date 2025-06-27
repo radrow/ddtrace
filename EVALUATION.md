@@ -110,19 +110,22 @@ Time: 10570973
 
 More specifically, the generated output should satisfy these requirements:
 
-- It should end with the line `### TERMINATED ###`.
-- It should not contain stack traces nor error messages --- otherwise, please
-  send us the entire output.
-- The time measurements (e.g. `00:010:601` or `Time: 10570973`) may be
-  different.
+1. It should end with the line `### TERMINATED ###`.
+2. It should not contain stack traces nor error messages --- otherwise, please
+   send us the entire output.
+3. The time measurements (e.g. `00:010:601` or `Time: 10570973`) must be
+   present, although they may be different.
+
+If the 3 requirements above are met, then this step of the "Kick the tires"
+assessment is completed.
 
 
 ## Reproducing the results in the paper
 
 ### Reproducing the plots in *Figures 15 and 16*
 
-To reproduce *Figures 15 and 16* in the paper, please delete the `output` folder
-(if present) and run the following command.
+To reproduce *Figures 15 and 16* in the paper, **please delete the directory
+called `output` (if present)** and run the following command.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
