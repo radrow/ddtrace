@@ -18,7 +18,7 @@ docker service running. On Mac, make sure you have Docker Desktop open.
 To build the docker image, run the following commands:
 
 ```bash
-mkdir -p output          # Creates a directory for the plots and other data
+mkdir output             # Creates a directory for the plots and other data
 docker build -t ddmon .  # Creates a Docker image called 'ddmon'
 ```
 
@@ -124,32 +124,34 @@ assessment is completed.
 
 ### Reproducing the plots in *Figures 15 and 16*
 
-To reproduce *Figures 15 and 16* in the paper, **please delete the directory
-called `output` (if present)** and run the following commands:
+To reproduce *Figures 15 and 16*, run the following commands:
 
 ```bash
-mkdir -p output
+rm -fr output  # Remove the 'output' directory, if it already exists
+mkdir output
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
-**Note:** the command above takes about **one hour** to complete on a computer
-with Intel Core i7-1185G7 (8 CPU cores), **32GB of RAM**, running Fedora 42. The
-command generates detailed statistics from every experiment, which may take up
-to 20GB of disc space in total. This is what we used to obtain the results in
-the paper. If the command crashes and displays `/app/bench.sh: line 30: 1193
-Killed "$@"` anywhere in the output, it means that the program has likely run
-out of memory. If that happens, delete the `output` folder and try the smaller
-variant described below.
+**Note:** the `docker` command above takes about **one hour** to complete on a
+computer with Intel Core i7-1185G7 (8 CPU cores), **32GB of RAM**, running
+Fedora 42. The command generates detailed statistics from every experiment,
+which may take up to 20GB of disc space in total. This is what we used to obtain
+the results in the paper. If the command crashes and displays `/app/bench.sh:
+line 30: 1193 Killed "$@"` anywhere in the output, it means that the program has
+likely run out of memory. If that happens, delete the `output` folder and try
+the smaller variant described below.
 
 For a less resource-intensive variant (which may less accurately align to the
-results in the paper), you can run the following command instead: it takes about
-10 minutes on the same computer, and needs **10GB of _available_ RAM**.
+results in the paper), you can run the following `docker` command instead: it
+takes about 10 minutes on the same computer, and needs **10GB of _available_
+RAM**.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh medium
 ```
 
-After that, the following PDF files should be generated:
+After the `docker` command terminates, the following PDF files should be
+generated:
 
 - *Figure 15a*: `output/fig_15_a.pdf`
 - *Figure 15b*: `output/fig_15_b.pdf`
@@ -159,19 +161,20 @@ After that, the following PDF files should be generated:
 - *Figure 16c*: `output/fig_16_c/*.pdf` (many files)
 
 Note that the produced plots may look different w.r.t. those in the paper. This
-is because the benchmarks perform multiple executions of concurrent systems, and
-each execution may or may not deadlock at a certain time, depending on (1)
-intrinsic nondeterminism in their behaviour, and (2) further nondeterminism
-introduced by scheduling (similarly to the non-deterministic deadlock
-illustrated in *Example 3.10* in the paper).
+is because the scripts perform multiple executions of several concurrent
+systems, and each execution may or may not deadlock at a certain time, depending
+on (1) intrinsic nondeterminism in their behaviour, and (2) further
+nondeterminism introduced by scheduling (similarly to the non-deterministic
+deadlock illustrated in *Example 3.10* in the paper).
 
 The following subsections explain how to compare the plots produced by the
-benchmark scripts above with those in the paper.
+artifact scripts above with the plots in the paper.
 
 #### *Figure 15*
 
-The plots produced for *Figure 15* by our benchmarking script may be slightly
-different w.r.t. the paper, but the overall trends should be the same:
+The plots produced for *Figure 15* by our script (i.e., `output/fig_15_a.pdf`,
+`output/fig_15_b.pdf`, and `output/fig_15_c.pdf`) may be slightly different
+w.r.t. the paper, but the overall trends should be the same:
 
 - In *Figures 15a, 15b and 15c*, the orange line should show values greater or
   equal to blue and green lines, while red line should be above the orange line.
@@ -183,14 +186,17 @@ different w.r.t. the paper, but the overall trends should be the same:
 
 #### *Figure 16*
 
-Each time series in *Figure 16* in the paper visualises one specific execution of
-the benchmarked scenario, under different probe emission delays (0ms, 1000ms, or
-5000ms). To produce *Figure 16* we manually selected 3 executions that clearly
-show how many queries, responses, and probes may be emitted, and when. The
-benchmark script in the artifact runs and plots numerous execution time series
-for each probe delay --- and therefore, the script produces many candidate plots
-for Figures *16a*, *16b* and *16c*. The script saves all such candidate plots as
-PDF files in the directories `output/fig_16_a/`, `output/fig_16_b/`, and
+Each time series shown in *Figure 16* in the paper visualises one specific
+execution of a non-deterministic concurrent system, under different probe
+emission delays (0ms, 1000ms, or 5000ms). To produce *Figure 16* we manually
+selected 3 executions that clearly show how many queries, responses, and probes
+may be emitted, and when.
+
+The script in the artifact performs multiple executions of a non-deterministic
+concurrent system for each probe delay, and plots and saves the time series of
+each execution. As a consequence, the script produces many candidate plots for
+Figures *16a*, *16b* and *16c*. The script saves all such candidate plots as PDF
+files in the directories `output/fig_16_a/`, `output/fig_16_b/`, and
 `output/fig_16_c/`, respectively.
 
 In each produced plot, there may be any number of deadlocks (usually zero or
