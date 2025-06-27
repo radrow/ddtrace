@@ -17,12 +17,13 @@ in this project.
 
 The results produced in [EVALUATION.md](EVALUATION.md) have been directly used
 as *Figures 15 and 16* as well as *Listings 2, 3 and 4*. The outputs should
-not differ significantly between numerous experiments.
+not differ significantly between the various experiments.
 
 Note that certain results cannot be replicated exactly, or may require a number
 of retries. This is due to arbitrary scheduling, which is an inherent feature of
 distributed systems. In fact, some of our tests produce variable outputs on
-purpose, to test the program against non-deterministic behaviours.
+purpose, to induce a wider range of potential program behaviours, taking
+non-determinism into account.
 
 #### Complete
 

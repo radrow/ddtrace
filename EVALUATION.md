@@ -221,7 +221,7 @@ detection test scenarios:
 - *Listings 3* and *4* in *Figure 19* in Appendix A.1.
 
 *NOTE:* the deadlock detection test scenarios described below are
-nondeterministic: whey they are executed, they may or may not deadlock. This is
+nondeterministic: when they are executed, they may or may not deadlock. This is
 due to (1) intrinsic nondeterminism in the scenario itself, and (2) further
 nondeterminism introduced by scheduling (similarly to the non-deterministic
 deadlock illustrated in *Example 3.10* in the paper). Therefore, it may be

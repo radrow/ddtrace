@@ -12,7 +12,7 @@ To instrument an Erlang or Elixir program with DDMon monitors, you'll need to
 follow these instructions, which depend on the language used to write each
 `gen_server` instance:
 
-- In the case `gen_server`s implemented in Elixir,  it suffices to add the
+- In the case of `gen_server`s implemented in Elixir, it suffices to add the
   following line at the top of the file, immediately after `use GenServer`:
 
   ```elixir
@@ -26,8 +26,8 @@ follow these instructions, which depend on the language used to write each
 ## Example: monitoring a microchip factory application
 
 We now present an example showing how DDMon can monitor a distributed
-application. This simple example serves as a starting point for further
-experiments, which we encourage to try.
+application. We encourage the users to try this simple example, as it serves as
+a starting point for further experiments.
 
 The example is an Elixir application available the `example-system` directory
 (see its [README](example-system/README.md)). The application implements a
@@ -154,7 +154,7 @@ docker build -t ddmon .
 
 Now you can try rerunning the application several times with the additional
 `:monitored` parameter, which enables deadlock reporting on the terminal.
-(For more details about this parameter, see at the end of this file.)
+(For more details about this parameter, see the NOTE at the end of this file.)
 
 - Small version:
   ```bash
