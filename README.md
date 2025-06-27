@@ -19,6 +19,9 @@ files, and skip the rest of this file.
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) for details about the DDMon
   implementation and how it connects to the theory and results in the companion
   paper.
+- [BADGING.md](BADGING.md) contains overview on how we address requirements for
+each ACM artifact badge.
+
 
 **NOTE:** The following build instructions are tested on GNU/Linux (Ubuntu 24.04
 and 25.04, and Fedora 42) and macOS.

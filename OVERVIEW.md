@@ -15,3 +15,5 @@ referenced files and their PDF renders in the main artifact zip.
 - [EXAMPLE.md](EXAMPLE.md) — Showcase of how to use DDMon for monitoring
   applications based on the `gen_server` behaviour. This file serves as the
   **Reusability Guide**.
+- [BADGING.md](BADGING.md) — Contains overview on how we address requirements
+  for each ACM artifact badge.

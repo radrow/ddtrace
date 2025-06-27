@@ -6,9 +6,6 @@ running within a [Docker](https://www.docker.com/) container.
 As an alternative, similar commands can be executed locally, after performing a
 local installation as described in [README.md](README.md).
 
-The file [BADGING.md](BADGING.md) contains overview on how we address
-requirements for each ACM artifact badge.
-
 ## Getting started
 
 For this evaluation, we recommend building and running DDMon within a
