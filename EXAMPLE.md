@@ -193,24 +193,34 @@ deadlocked PIDs.
 
 ### Collecting deadlock reports
 
-When DDMon is enabled, its deadlock reports are propagated within the monitored
-part of the network. There are two ways to subscribe to deadlock reports from
-the outside:
+When DDMon is enabled, its deadlock reports are propagated within monitors.
+There are two ways to subscribe to deadlock reports from the "outside" of a
+system of monitored `gen_server` behaviours:
 
-- The call message is of form `{?MONITORED_CALL, Msg}`, where `Msg` is the
-  intended message. Then, in case of a deadlock, the monitored service will send
-  back a reply of form `{?DEADLOCK, DL}` where `DL` is the list of services
-  involved in the deadlock. `?MONITORED_CALL` and `?DEADLOCK` are macros defined
-  in `src/ddmon.hrl`;
-- Alternatively, the subscriber may call `ddmon:subscribe_deadlocks(Server)`.
-  Then, if the monitored service `Server` becomes involved in a deadlock, it
-  will send a plain message `{?DEADLOCK, DL}` to the caller.
+- A process may subscribe to deadlock reports by calling
+  `ddmon:subscribe_deadlocks(<Service>)`. Then, if the monitored `gen_server`
+  instance identified by `<Service>` becomes involved in a deadlock cycle, then
+  its monitor will send a message of the form `{?DEADLOCK, DL}` to each deadlock
+  report subscriber --- where `DL` is the list of services involved in the
+  deadlock cycle.
+
+- A client may send a `gen_server` call of form `{?MONITORED_CALL, <Msg>}` to a
+  monitored `gen_server` instance --- where `<Msg>` is the intended message.
+  Then, in case of a deadlock, the monitor will send back to the client a
+  response of the form `{?DEADLOCK, DL}` where `DL` is the list of services
+  involved in the deadlock cycle.
+
+In both cases above, `?MONITORED_CALL` and `?DEADLOCK` are macros defined in
+the file `src/ddmon.hrl`.
 
 In this example application, the `:monitored` parameter instructs the scripts
 that run the example application to subscribe to the deadlock reports generated
 by DDMon, and visualise them on the console. If DDMon is enabled but the
 `:monitored` parameter is omitted (which is the default), then deadlocks are
 still detected by DDMon, but the corresponding deadlock reports are not
-displayed. Importantly, the `:monitored` parameter must *only* be used if the
+displayed. For more details, see the source code of
+`example-system/lib/microchip_factory.ex`.
+
+Importantly, the `:monitored` parameter must *only* be used if the
 system is monitored by DDMon (i.e., if the `alias` directives described above
 are present).
