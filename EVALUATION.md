@@ -6,12 +6,16 @@ running within a [docker](https://www.docker.com/) container.
 As an alternative, similar commands can be executed locally, after performing a
 local installation as described in [README.md](README.md).
 
+The file [BADGING.md](BADGING.md) contains overview on how we address
+requirement for each ACM artifact badge.
 
 ## Preparation
 
 For this evaluation, we recommend building and running DDMon within a
-[docker](https://www.docker.com/) container. To build the docker image, run the
-following commands:
+[docker](https://www.docker.com/) container. On Linux, make sure you have the
+docker service running. On Mac, make sure you have Docker Desktop open.
+
+To build the docker image, run the following commands:
 
 ```bash
 mkdir -p output          # Creates a directory for the plots and other data
@@ -53,8 +57,8 @@ please send us the entire output. If you run into permission issues, please
 delete the `output` folder and try again.
 
 After the program has finished, the `output` folder should contain PDF files
-with various plots (e.g. `output/figure_15_a.pdf` or
-`output/fig_16_b/conditional__1000__2619635.pdf`; name of the latter may
+with various plots (e.g. `output/fig_15_a.pdf` or
+`output/fig_16_b/conditional__1000__2619635.pdf`; the name of the latter may
 differ).
 
 Please try visualising such PDF files with a PDF viewer: if the files contain
@@ -112,19 +116,25 @@ More specifically, the generated output should satisfy these requirements:
   different.
 
 
-## Reproducing the results from the paper
+## Reproducing the results in the paper
 
 ### Reproducing the plots in *Figures 15 and 16*
 
-To reproduce *Figures 15 and 16* in the paper, please run the following command.
+To reproduce *Figures 15 and 16* in the paper, please delete the `output` folder
+(if present) and run the following command.
 
 ```bash
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
 **Note:** the command above takes about **one hour** to complete on a computer
-with Intel Core i7-1185G7 (8 CPU cores) and **32GB of RAM**, running Fedora 42.
-This is what we used to obtain the results in the paper.
+with Intel Core i7-1185G7 (8 CPU cores), **32GB of RAM**, running Fedora 42. The
+command generates detailed statistics from every experiment, which may take up
+to 20GB of disc space in total. This is what we used to obtain the results in
+the paper. If the command crashes and displays `/app/bench.sh: line 30: 1193
+Killed "$@"` anywhere in the output, it means that the program has likely run
+out of memory. If that happens, delete the `output` folder and try the smaller
+variant described below.
 
 For a less resource-intensive variant (which may less accurately align to the
 results in the paper), you can run the following command instead: it takes about
@@ -158,8 +168,8 @@ benchmark scripts above with those in the paper.
 The plots produced for Figure 15 by our benchmarking script may be slightly
 different w.r.t. the paper, but the overall trends should be the same:
 
-- In *Figures 15a, 15b and 15c*, the orange line should show values greater than
-  blue and green lines, while red line should be above the orange line.
+- In *Figures 15a, 15b and 15c*, the orange line should show values greater or
+  equal to blue and green lines, while red line should be above the orange line.
 - In *Figures 15a and 15b*, the blue line should present roughly the same values
   as the green line.
 - In *Figure 15b*, the blue and green lines should be close to zero.
@@ -211,7 +221,7 @@ detection test scenarios:
 - *Listings 3* and *4* in *Figure 19* in Appendix A.1.
 
 *NOTE:* the deadlock detection test scenarios described below are
-nondeterministic: whey they are executed, they may or may not deadlock. This is
+nondeterministic: when they are executed, they may or may not deadlock. This is
 due to (1) intrinsic nondeterminism in the scenario itself, and (2) further
 nondeterminism introduced by scheduling (similarly to the non-deterministic
 deadlock illustrated in *Example 3.10* in the paper). Therefore, it may be

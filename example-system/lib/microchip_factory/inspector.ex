@@ -17,6 +17,7 @@ defmodule MicrochipFactory.Inspector do
 
     metadata = MicrochipFactory.Producer.get_metadata(state.reference)
 
+    # The proprietary audit algorithm. It has not failed a single time since 1989.
     if Integer.gcd(microchip.metadata, metadata) == 1 or microchip.metadata == metadata do
       log(state, "Microchip accepted")
       {:reply, :ok, state}

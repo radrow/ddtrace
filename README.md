@@ -3,35 +3,36 @@
 DDMon is a deadlock monitoring tool for Erlang and Elixir programs based on the
 `gen_server` behaviour.
 
-This document contains prerequisites and instructions for building and running
-DDMon.
+This document contains prerequisites and instructions for building, using, and
+evaluating DDMon.
 
 **NOTE:** To evaluate the OOPSLA'25 artifact, you can use a Docker-based setup
-for DDMon, instead of performing a local build. In this case, you can skip this
-file and move directly to the instructions in the following files:
+for DDMon. In this case, you can just follow the instructions in the following
+files, and skip the rest of this file.
 
-- [EVALUATION.md](EVALUATION.md) for setting up the Docker image and reproducing
-  the plots and listings in the companion paper.
-- [EXAMPLE.md](EXAMPLE.md) to see how DDMon can be applied to examples beyond
-  those in the companion paper.
+- [EVALUATION.md](EVALUATION.md) for setting up the Docker image, "kicking the
+  tires," and reproducing the plots and listings in the companion paper.
+- [EXAMPLE.md](EXAMPLE.md) to see how DDMon can be used for monitoring
+  applications based on the `gen_server` behaviour.
 - [SCENARIOS.md](SCENARIOS.md) for the documentation of the testing DSL used in
   the paper to benchmark DDMon to various randomised scenarios of varying size.
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) for details about the DDMon
   implementation and how it connects to the theory and results in the companion
   paper.
 
-**NOTE:** The following instructions are tested on GNU/Linux (Ubuntu 24.04 and
-Fedora 42).
+**NOTE:** The following build instructions are tested on GNU/Linux (Ubuntu 24.04
+and 25.04, and Fedora 42).
 
 
-## Prerequisites
+## Build prerequisites
 
 - [Erlang/OTP](https://www.erlang.org/), version `26` or higher
 - [Elixir](https://elixir-lang.org/), version `1.14` or higher
 - [Mix](https://hexdocs.pm/mix/Mix.html)
-- [Python 3](https://www.python.org/) with [numpy](https://numpy.org/),
-  [pandas](https://pandas.pydata.org/) and [matplotlib](https://matplotlib.org/)
-  (for plotting benchmark results)
+- [Python 3](https://www.python.org/) with [numpy](https://numpy.org/) (at least
+  2.2), [pandas](https://pandas.pydata.org/) (at least 2.2) and
+  [matplotlib](https://matplotlib.org/) (at least 3.10) --- for plotting
+  benchmark results
 
 
 ### Optional: script for a fresh local installation of Erlang and Elixir
@@ -62,13 +63,13 @@ every shell session in order to set up `PATH` correctly.
 
 ## Building DDMon
 
-To build DDMon, run
+To create a local build of DDMon, run:
 
 ```bash
 make
 ```
 
-If you do not have `make`, you can run the following instead
+If you do not have `make`, you can run the following instead:
 
 ```bash
 mix deps.get
@@ -76,26 +77,20 @@ mix escript.build
 ```
 
 
-## Usage
+## Evaluating the OOPSLA'25 artifact
 
-DDMon serves as a drop-in replacement for Erlang and Elixir's generic server
-behaviour (`gen_server`). To use it, include the contents of the [src/](src/)
-directory in your project and replace all references to `gen_server` or
-`GenServer` with `ddmon`.
-
-For more details, please see [EXAMPLE.md](EXAMPLE.md).
-
-
-## Testing
-
-After building the project, you can run:
+After building DDMon, you can follow the instructions and documentation in the
+files listed at the beginning of this document, starting with
+[EVALUATION.md](EVALUATION.md) --- except that you should **remove the
+Docker-related part of each command**. For example, if
+[EVALUATION.md](EVALUATION.md) asks you to run:
 
 ```bash
-./ddmon SCENARIO_FILE
+docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh small
 ```
 
-Where `SCENARIO_FILE` is a file describing the test scenario. For tweaking
-information, see `./ddmon --help`.
+then you should run instead:
 
-See [SCENARIOS.md](SCENARIOS.md) for the documentation on how the DDMon scenario
-tests work, and instructions on how to define new test scenarios.
+```bash
+./bench.sh small
+```
