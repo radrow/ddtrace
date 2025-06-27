@@ -1,7 +1,7 @@
 # DDMon artifact evaluation
 
 This document contains instructions on how to evaluate the DDMon artifact
-running within a [docker](https://www.docker.com/) container.
+running within a [Docker](https://www.docker.com/) container.
 
 As an alternative, similar commands can be executed locally, after performing a
 local installation as described in [README.md](README.md).
@@ -12,7 +12,7 @@ requirement for each ACM artifact badge.
 ## Preparation
 
 For this evaluation, we recommend building and running DDMon within a
-[docker](https://www.docker.com/) container. On Linux, make sure you have the
+[Docker](https://www.docker.com/) container. On Linux, make sure you have the
 docker service running. On Mac, make sure you have Docker Desktop open.
 
 To build the docker image, run the following commands:

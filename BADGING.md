@@ -9,30 +9,29 @@ in this project.
 
 #### Documented
 
-- [SCENARIOS.md](SCENARIOS.md) describes how to build and run the project
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) guides through the implementation details
-- [EXAMPLE.md](EXAMPLE.md) shows how to apply DDMon to a distributed system
+- [EXAMPLE.md](EXAMPLE.md) documents how to use DDMon to monitor a distributed
+  application based on the `gen_server` behaviour. The example can be used as a
+  blueprint to monitor other `gen_server`-based applications.
+- [SCENARIOS.md](SCENARIOS.md) documents the testing DSL used to test and
+  benchmark DDMon.
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) describes the implementation details of
+  DDMon.
 
 #### Consistent
 
-The results produced in [EVALUATION.md](EVALUATION.md) have been directly used
-as *Figures 15 and 16* as well as *Listings 2, 3 and 4*. The outputs should
-not differ significantly between the various experiments.
-
-Note that certain results cannot be replicated exactly, or may require a number
-of retries. This is due to arbitrary scheduling, which is an inherent feature of
-distributed systems. In fact, some of our tests produce variable outputs on
-purpose, to induce a wider range of potential program behaviours, taking
-non-determinism into account.
+The results in *Figures 15 and 16* as well as *Listings 2, 3 and 4* in the paper
+have been produced according to the instructions in
+[EVALUATION.md](EVALUATION.md).
 
 #### Complete
 
-The provided artifact is a standalone device.
+The provided artifact includes all components necessary to reproduce the results
+in the paper:
 
-- [EXAMPLE.md](EXAMPLE.md) shows how it can be used to monitor
-  `gen_server`s for deadlocks.
 - [EVALUATION.md](EVALUATION.md) shows how to generate plots for *Figures 15 and
   16*, as well as *Listings 2, 3 and 4*.
+- [EXAMPLE.md](EXAMPLE.md) shows how DDMon can be used to monitor
+  `gen_server`-based applications for deadlocks.
 
 #### Exercisable
 
@@ -45,28 +44,22 @@ folder) with detailed execution statistics.
 ### Reusable
 
 - [EXAMPLE.md](EXAMPLE.md) shows how to use DDMon to monitor an example
-  distributed system (see [example-system/README.md](example-system/README.md)).
-  The example is not tailored to be used with DDMon --- the compatibility comes
-  just from the fact that it is a `gen_server`-based system. We encourage
-  experimenting with it and trying to apply DDMon to custom-made networks of
-  generic servers.
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) describes the design of the monitor.
-  DDMon follows standard patterns of OTP application design, using standard
-  behaviours in its foundation.
+  distributed application based on the `gen_server` behaviour (see
+  [example-system/README.md](example-system/README.md) for further details on
+  that application). The example can be used as a blueprint to monitor other
+  `gen_server`-based applications. We encourage experimenting with it and trying
+  to apply DDMon to other applications.
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) describes the design of the DDMon
+  internals. DDMon follows standard patterns of OTP application design, using
+  standard behaviours in its foundation.
 
 ## Artifacts Available
 
-We will release the artifact under MIT license and host it on our facility's
-public repository. We have not attached the license yet to preserve anonymity.
+We will release this artifact under the MIT license. We have not attached the
+license yet to preserve anonymity.
 
 ## Results Validated
 
-### Reproduced
+### Results Reproduced
 
 Please follow the instructions in [EVALUATION.md](EVALUATION.md).
-
-### Replicated
-
-We encourage implementing the algorithm. A minimal implementation can be rather
-simple, especially if it does not aim to preserve wide compatibility with
-`gen_server` API and telemetry.
