@@ -125,9 +125,10 @@ assessment is completed.
 ### Reproducing the plots in *Figures 15 and 16*
 
 To reproduce *Figures 15 and 16* in the paper, **please delete the directory
-called `output` (if present)** and run the following command.
+called `output` (if present)** and run the following commands:
 
 ```bash
+mkdir -p output
 docker run --rm -v "$(pwd)/output:/app/output" ddmon ./bench.sh
 ```
 
