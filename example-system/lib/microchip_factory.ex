@@ -50,6 +50,7 @@ defmodule MicrochipFactory do
     _prods = for idx <- 0..session_size, sess <- [:a, :b, :c], into: %{} do
       name = {:via, Registry, {:factory, {:prod, sess, idx}}}
 
+      # All producers (except the last one) call the next producer in order
       components = if idx == session_size do
         []
       else

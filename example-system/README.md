@@ -71,5 +71,5 @@ sizes.
 Producers are divided into 3 categories: `:a`, `:b` and `:c`. Within each
 category, there are producers indexed from `0` to `30`. `n`-th producer (except
 the 30th) calls the `n+1`-th in order to produce its result. All producers in
-the category `:a` use an inspector whose reference is the 26th producer in
+the category `:a` use an inspector whose reference is one of the producers in
 category `:b`. Similarly for `:b` and `:c`, as well as `:c` and `:a`.

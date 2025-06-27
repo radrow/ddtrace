@@ -193,9 +193,9 @@ deadlocked PIDs.
 
 ### Collecting deadlock reports
 
-When DDMon is enabled, its deadlock reports are propagated within monitors.
-There are two ways to subscribe to deadlock reports from the "outside" of a
-system of monitored `gen_server` behaviours:
+When DDMon is enabled, its deadlock reports are propagated among monitors. There
+are two ways to subscribe to deadlock reports from the "outside" of a system of
+monitored `gen_server` behaviours:
 
 - A process may subscribe to deadlock reports by calling
   `ddmon:subscribe_deadlocks(<Service>)`. Then, if the monitored `gen_server`
@@ -205,10 +205,11 @@ system of monitored `gen_server` behaviours:
   deadlock cycle.
 
 - A client may send a `gen_server` call of form `{?MONITORED_CALL, <Msg>}` to a
-  monitored `gen_server` instance --- where `<Msg>` is the intended message.
-  Then, in case of a deadlock, the monitor will send back to the client a
-  response of the form `{?DEADLOCK, DL}` where `DL` is the list of services
-  involved in the deadlock cycle.
+  monitored `gen_server` instance --- where `<Msg>` is the message that would be
+  normally sent if the caller did not subscribe to deadlock reports. Then, in
+  case of a deadlock, the monitor will send back to the client a response of the
+  form `{?DEADLOCK, DL}` where `DL` is the list of services involved in the
+  deadlock cycle.
 
 In both cases above, `?MONITORED_CALL` and `?DEADLOCK` are macros defined in
 the file `src/ddmon.hrl`.

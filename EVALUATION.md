@@ -7,7 +7,7 @@ As an alternative, similar commands can be executed locally, after performing a
 local installation as described in [README.md](README.md).
 
 The file [BADGING.md](BADGING.md) contains overview on how we address
-requirement for each ACM artifact badge.
+requirements for each ACM artifact badge.
 
 ## Preparation
 
@@ -47,12 +47,13 @@ looking as follows:
 ```none
 *** Running experiments on 120 scenarios. Experiment status legend:
  . Waiting | o Preparing | O Working | @ Success | D Deadlock | ! Crash | T Timeout
-[ . o D @ o @ @ @ D . D @ D O O @ D D D @ ]
+[ . o D @ o @ @ @ D . D @ D T O @ D D D @ ]
 ```
 
 The command should terminate after about a minute and print `Done` at the end.
 
-No stack trace (i.e., a wall of red text) should be printed --- otherwise,
+No stack trace (i.e., a wall of red text) should be printed, nor the animation
+should show a flashing exclamation mark (except the legend) --- otherwise,
 please send us the entire output. If you run into permission issues, please
 delete the `output` folder and try again.
 
@@ -163,9 +164,9 @@ illustrated in *Example 3.10* in the paper).
 The following subsections explain how to compare the plots produced by the
 benchmark scripts above with those in the paper.
 
-#### Figure 15
+#### *Figure 15*
 
-The plots produced for Figure 15 by our benchmarking script may be slightly
+The plots produced for *Figure 15* by our benchmarking script may be slightly
 different w.r.t. the paper, but the overall trends should be the same:
 
 - In *Figures 15a, 15b and 15c*, the orange line should show values greater or
@@ -176,11 +177,11 @@ different w.r.t. the paper, but the overall trends should be the same:
 - In *Figure 15c*, the blue line should show values approximately 3 times lower
   than the other lines.
 
-#### Figure 16
+#### *Figure 16*
 
-Each time series in Figure 16 in the paper visualises one specific execution of
+Each time series in *Figure 16* in the paper visualises one specific execution of
 the benchmarked scenario, under different probe emission delays (0ms, 1000ms, or
-5000ms). To produce Figure 16 we manually selected 3 executions that clearly
+5000ms). To produce *Figure 16* we manually selected 3 executions that clearly
 show how many queries, responses, and probes may be emitted, and when. The
 benchmark script in the artifact runs and plots numerous execution time series
 for each probe delay --- and therefore, the script produces many candidate plots
