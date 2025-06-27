@@ -6,11 +6,14 @@ all: deps
 deps:
 	mix deps.get
 
-
 .PHONY: docs
 docs:
-	git ls-files | grep -E '.md$' | xargs -I {} pandoc -t pdf {} -o {}.pdf
+	git ls-files | grep -e '\.md$$' | xargs -I {} pandoc "{}" -o "{}.pdf" -V geometry:margin=1cm --number-sections
 
+.PHONY: zip
+zip: docs
+	git ls-files | zip -r ddmon.zip -@
+	find . \( -name '*.md' -o -name '*.md.pdf' \) | zip -r ddmon-docs.zip -@
 
 .PHONY: clean
 clean:
