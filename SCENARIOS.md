@@ -415,4 +415,7 @@ this time `1` calls `0` causing a deadlock.
 
 #### `bc` and `ts`
 
-Large benchmarks used to obtain *Figures 15* and *16* respectively.
+These are large benchmarks used to obtain *Figures 15 and 16* respectively. We
+used two different tests to obtain those figures, because *Figure 15* demanded a
+huge amount of tests of different sizes, whereas *Figure 16* benefited from
+fewer but larger tests for clarity of the outputs.

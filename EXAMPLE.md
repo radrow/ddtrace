@@ -193,7 +193,18 @@ deadlocked PIDs.
 
 ### Collecting deadlock reports
 
-When DDMon is enabled, its deadlock reports are propagated to 
+When DDMon is enabled, its deadlock reports are propagated within the monitored
+part of the network. There are two ways to subscribe to deadlock reports from
+the outside:
+
+- The call message is of form `{?MONITORED_CALL, Msg}`, where `Msg` is the
+  intended message. Then, in case of a deadlock, the monitored service will send
+  back a reply of form `{?DEADLOCK, DL}` where `DL` is the list of services
+  involved in the deadlock. `?MONITORED_CALL` and `?DEADLOCK` are macros defined
+  in `src/ddmon.hrl`;
+- Alternatively, the subscriber may call `ddmon:subscribe_deadlocks(Server)`.
+  Then, if the monitored service `Server` becomes involved in a deadlock, it
+  will send a plain message `{?DEADLOCK, DL}` to the caller.
 
 In this example application, the `:monitored` parameter instructs the scripts
 that run the example application to subscribe to the deadlock reports generated
