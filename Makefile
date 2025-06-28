@@ -12,7 +12,7 @@ docs:
 
 .PHONY: zip
 zip: docs
-	git ls-files | zip -r ddmon.zip -@
+	git ls-files | zip -r 153.zip -@
 	find . \( -name '*.md' -o -name '*.md.pdf' \) | zip -r ddmon-docs.zip -@
 
 .PHONY: clean
