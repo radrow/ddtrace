@@ -16,6 +16,8 @@ badge.
   benchmark DDMon.
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) describes the implementation details of
   DDMon.
+- [README.md](README.md) contains instructions for building and using DDMon
+  without Docker.
 
 #### Consistent
 
@@ -52,6 +54,8 @@ folder) with detailed execution statistics.
 - [IMPLEMENTATION.md](IMPLEMENTATION.md) describes the design of the DDMon
   internals. DDMon follows standard patterns of OTP application design, using
   standard behaviours in its foundation.
+- [README.md](README.md) contains instructions for building and using DDMon
+  without Docker.
 
 ## Artifacts Available
 
