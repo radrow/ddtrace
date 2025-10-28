@@ -83,7 +83,7 @@ init({Worker, MonRegister, _Opts}) ->
     {ok, synced, Data, []}.
 
 callback_mode() ->
-    state_event_function.
+    handle_event_function.
 
 terminate(Reason, _State, Data) ->
     terminate(Reason, Data).
