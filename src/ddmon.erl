@@ -1,6 +1,8 @@
 -module(ddmon).
 -behaviour(gen_statem).
 
+-include("ddmon.hrl").
+
 %% API
 -export([ start/2, start/3, start/4
         , start_link/2, start_link/3, start_link/4
@@ -43,7 +45,8 @@
 %% -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
 -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, ReqId}, _}).
 -define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
--define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
+-define(GS_RESP_ALIAS(ReqId), {[alias|ReqId], _Msg}).
+-define(GS_RESP(ReqId), {ReqId, _Msg}).
 
 %%%======================
 %%% API Functions
@@ -134,7 +137,15 @@ handle_event(info,
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Send response
+%% Send response (alias-based)
+handle_event(info,
+             {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS(ReqId), To, _Ts},
+             _State,
+             _Data) ->
+    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
+
+%% Send response (plain ReqId)
 handle_event(info,
              {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _State,
@@ -150,7 +161,15 @@ handle_event(info,
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Receive response
+%% Receive response (alias-based)
+handle_event(info,
+             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS(ReqId), _Ts},
+             _State,
+             _Data) ->
+    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
+
+%% Receive response (plain ReqId)
 handle_event(info,
              {trace_ts, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
              _State,
@@ -169,8 +188,8 @@ handle_event(_Kind, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) 
     keep_state_and_data;
 
 %% Send response
-handle_event(_Kind, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), _State, Data) ->
-    call_mon_state({unwait, ReqId}, Data),
+handle_event(_Kind, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), _State, Data) ->
+    call_mon_state({unwait, To}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
@@ -230,22 +249,33 @@ handle_event(cast, ?PROBE(_), _State, _Data) ->
 
 send_notif(To, MsgInfo, Data) ->
     Mon = mon_of(To, Data),
-    Worker = Data#data.worker,
-    Msg = ?NOTIFY(Worker, MsgInfo),
-    gen_statem:cast(Mon, Msg).
+    case Mon of
+        undefined -> ok;
+        _ ->
+            Worker = Data#data.worker,
+            Msg = ?NOTIFY(Worker, MsgInfo),
+            gen_statem:cast(Mon, Msg)
+    end.
 
-call_mon_state(Msg, #data{mon_state = Pid}) ->
+call_mon_state(Msg, Data = #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
-    handle_mon_state_response(Resp).
+    handle_mon_state_response(Resp, Data).
 
-handle_mon_state_response(ok) ->
+handle_mon_state_response(ok, _Data) ->
     ok;
-handle_mon_state_response(deadlock) ->
-    throw(deadlock);
-handle_mon_state_response({send, Sends}) ->
-    [ gen_statem:cast(ToPid, ?PROBE(Probe)) 
+handle_mon_state_response(deadlock, Data) ->
+    %% Notify subscribers and keep running
+    notify_deadlock_subscribers(Data),
+    ok;
+handle_mon_state_response({send, Sends}, _Data) ->
+    [ gen_statem:cast(ToPid, ?PROBE(Probe))
       || {ToPid, ?PROBE(Probe)} <- Sends
-    ].
+    ],
+    ok.
+
+notify_deadlock_subscribers(#data{deadlock_subscribers = Subs, worker = Worker}) ->
+    [ catch (Sub ! {?DEADLOCK, Worker}) || Sub <- Subs ],
+    ok.
 
 mon_of(To, Data) ->
     mon_reg:mon_of(Data#data.mon_register, To).

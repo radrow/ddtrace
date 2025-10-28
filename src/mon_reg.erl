@@ -33,7 +33,7 @@ unset_mon(Reg, Pid) ->
 send_mon(Reg, Pid, Msg) ->
     case mon_of(Reg, Pid) of
         undefined -> exit({badarg, {Pid, Msg}});
-        Pid when is_pid(Pid) -> Pid ! Msg, Pid
+        MonPid when is_pid(MonPid) -> MonPid ! Msg, MonPid
     end.
 
 via(Reg, Pid) ->
@@ -47,8 +47,10 @@ init([]) ->
     {ok, #state{}}.
 
 handle_call({whereis, Name}, _From, #state{map = Map} = S) ->
-    {M, _MonId} = maps:get(Name, Map),
-    {reply, M, S};
+    case maps:find(Name, Map) of
+        {ok, {M, _MonId}} -> {reply, M, S};
+        error -> {reply, undefined, S}
+    end;
 
 handle_call({register, Name, Pid}, _From, #state{map = M} = S) ->
     case maps:is_key(Name, M) of
