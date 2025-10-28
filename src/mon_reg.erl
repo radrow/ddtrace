@@ -46,8 +46,9 @@ via(Reg, Pid) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call({whereis, Name}, _From, #state{map = M} = S) ->
-    {reply, maps:get(Name, M, undefined), S};
+handle_call({whereis, Name}, _From, #state{map = Map} = S) ->
+    {M, _MonId} = maps:get(Name, Map),
+    {reply, M, S};
 
 handle_call({register, Name, Pid}, _From, #state{map = M} = S) ->
     case maps:is_key(Name, M) of

@@ -40,7 +40,8 @@
 -define(NOTIFY(From, MsgInfo), {notify, From, MsgInfo}).
 -define(HANDLE_RECV(From, MsgInfo), {'receive', From, MsgInfo}).
 
--define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
+%% -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
+-define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, ReqId}, _}).
 -define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
 -define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
 
@@ -66,15 +67,16 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 %%% gen_statem Callbacks
 %%%======================
 
-init({Worker, MonRegister, _Opts}) ->
+init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
     
     mon_reg:set_mon(MonRegister, Worker, self()),
+    {ok, MonState} = ddmon_monitor:start_link(MonRegister),
 
     init_trace(Worker),
     Data = #data{ worker = Worker
                 , mon_register = MonRegister
-                , mon_state = ddmon_monitor:start_link(MonRegister)
+                , mon_state = MonState
                 , deadlock_subscribers = []
                 },
 
@@ -92,9 +94,8 @@ terminate(_Reason, _Data) ->
 
 
 init_trace(Worker) ->
-    Session = trace:session_create(?MODULE, self(), []),
     TraceOpts = ['send', 'receive', strict_monotonic_timestamp],
-    trace:process(Session, Worker, true, TraceOpts),
+    erlang:trace(Worker, true, TraceOpts),
 
     erlang:trace_pattern(
       'send',
@@ -110,7 +111,7 @@ init_trace(Worker) ->
      ).
 
 %%%======================
-%%% All-time interactions
+%%% handle_event: All-time interactions
 %%%======================
 
 handle_event(cast, {subscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
@@ -122,12 +123,12 @@ handle_event(cast, {unsubscribe, From}, _State, Data = #data{deadlock_subscriber
     {keep_state, Data1};
 
 %%%======================
-%%% State Function --- traces
+%%% handle_event: Traces
 %%%======================
 
 %% Send query
 handle_event(info,
-             {trace, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
+             {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
@@ -135,7 +136,7 @@ handle_event(info,
 
 %% Send response
 handle_event(info,
-             {trace, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
+             {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
@@ -143,7 +144,7 @@ handle_event(info,
 
 %% Receive query
 handle_event(info,
-             {trace, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
+             {trace_ts, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
@@ -151,24 +152,24 @@ handle_event(info,
 
 %% Receive response
 handle_event(info,
-             {trace, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
+             {trace_ts, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
 %%%======================
-%%% State Function --- events
+%%% handle_event: Events
 %%%======================
 
 %% Send query
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) ->
+handle_event(_Kind, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) ->
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), _State, Data) ->
+handle_event(_Kind, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), _State, Data) ->
     call_mon_state({unwait, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
@@ -187,7 +188,7 @@ handle_event(cast, ?NOTIFY(From, MsgInfo), {wait_mon, MsgInfo}, Data) ->
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(cast, _Msg, {wait_mon, _MsgInfo}, _Data) ->
+handle_event(_Kind, _Msg, {wait_mon, _MsgInfo}, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
@@ -196,7 +197,7 @@ handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From}, Data) ->
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
-handle_event(internal, _Msg, {wait_proc, _From}, _Data) ->
+handle_event(_Kind, _Msg, {wait_proc, _From}, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive response
