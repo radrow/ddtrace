@@ -61,7 +61,7 @@ handle_call({register, Name, Pid}, _From, #state{map = M} = S) ->
 handle_call({unregister, Name}, _From, #state{map = M} = S) ->
     case maps:take(Name, M) of
         error -> {reply, ok, S};
-        {{Pid, Ref}, M2} ->
+        {{_Pid, Ref}, M2} ->
             erlang:demonitor(Ref, [flush]),
             {reply, ok, S#state{map = M2}}
     end;

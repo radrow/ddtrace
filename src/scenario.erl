@@ -22,8 +22,8 @@ fix_session(Map, [{random, Is} | Session]) when is_list(Is) ->
 fix_session(Map, [{'let', Name, Expr} | Session]) ->
     [{'let', Name, fix_session(Map, Expr)} | fix_session(Map, Session)];
 fix_session(Map, [I | Session]) when is_integer(I) ->
-    {M, _P} = maps:get(I, Map),
-    [M | fix_session(Map, Session)];
+    {_M, P} = maps:get(I, Map),
+    [P | fix_session(Map, Session)];
 fix_session(Map, [A | Session]) when is_atom(A) ->
     [A | fix_session(Map, Session)];
 fix_session(Map, [Instr | Session]) when is_atom(element(1, Instr)) ->
@@ -43,10 +43,10 @@ fix_scenario(Map, Scenario) ->
     [ {SessionId,
        {case Init of
            _ when is_integer(Init) ->
-               element(1, maps:get(Init, Map));
+               element(2, maps:get(Init, Map));
             {Wait, I} ->
                 { fix_session(Map, Wait)
-                , element(1, maps:get(I, Map))
+                , element(2, maps:get(I, Map))
                 }
         end,
         fix_session(Map, Session)}}
@@ -108,7 +108,7 @@ run_scenario(Scenario, Opts) ->
     GsModule = 'Elixir.Ddmon.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
 
-    MonReg = mon_register:start_link(),
+    {ok, MonReg} = mon_reg:start_link(),
 
     %% {LogKnown, LogFresh} = logging:mk_ets(),
     %% logging:conf(Opts),
@@ -124,12 +124,12 @@ run_scenario(Scenario, Opts) ->
                          end,
                   ChildSpec =
                       #{id => I,
-                        start => {GsModule, start_link, [I, Args, [{ddmon_opts, Opts}]]},
+                        start => {GsModule, start_link, [I, Args, []]},
                         restart => transient,
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  M = ddmon:start_link(P, MonReg),
+                  {ok, M} = ddmon:start_link(P, MonReg),
 
                   %% logging:remember(M, 'M', I),
                   %% logging:remember(P, 'P', I),
@@ -244,7 +244,7 @@ run_scenario(Scenario, Opts) ->
 receive_responses(Reqs0, Time) ->
     receive_responses(Reqs0, Time, []).
 receive_responses(Reqs0, Time, Deadlocks) ->
-    case gen_statem:receive_response(Reqs0, Time, true) of
+    case gen_server:receive_response(Reqs0, Time, true) of
         no_request when Deadlocks =:= [] ->
             ok;
         no_request ->

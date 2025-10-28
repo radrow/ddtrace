@@ -1,5 +1,53 @@
+%% Asynchronous deadlock detecting tracer for gen_server processes.
+%%
+%% Concept (classic probe based wait-for cycle detection):
+%%  * Outgoing gen_server:call (trace of 'send' with {'$gen_call', ReqId, _}) means
+%%    our worker now waits on the callee (edge: Self -> Callee). While waiting we
+%%    are "locked". If we were previously unlocked we create a fresh probe whose
+%%    identifier is that ReqId (root probe). We send this probe to the callee's
+%%    tracer (indirectly via MonRegister).
+%%  * Incoming gen_server:call (trace of 'receive' with {'$gen_call', ReqId, _})
+%%    means the caller waits on us (edge: Caller -> Self). We store the ReqId in
+%%    waitees. If we currently hold a probe (we are locked) we propagate our probe
+%%    to the newcomer immediately so it can flow further along the graph.
+%%  * Incoming reply to our outstanding call (trace 'receive' with {'$', ReqId, _})
+%%    removes the wait (edge Self -> Callee gone). If we are no longer waiting on
+%%    anyone, we drop our probe (root no longer needed). We keep waitees, since
+%%    others may still wait on us.
+%%  * Outgoing reply (trace 'send' with {'$', ReqId, _}) completes one caller's
+%%    wait; we remove that ReqId from waitees.
+%%  * Probe message ({trace, _, probe, ProbeId}) implements graph exploration.
+%%    When a probe arrives:
+%%      - If it equals our own probe id (we are root and our probe returned) a
+%%        cycle exists => report deadlock to subscribers.
+%%      - Otherwise, if we have not forwarded this probe before, we forward it to
+%%        all currently waiting callers (waitees). We never store foreign probes
+%%        (only maintain the root probe while locked) but remember their ids in
+%%        seen_probes to avoid unlimited re-propagation.
+%%  * While unlocked we do not hold a probe; we still forward any foreign probe
+%%    to current waitees.
+%%
+%% Differences from the previous version:
+%%  - Removed artificial synchronisation states (synced / wait_worker / wait_mon).
+%%    As full consistency is not required for eventual cycle detection, we run in
+%%    a single state function. This avoids losing probe messages while "unsynced".
+%%  - Correct probe semantics: only one local probe (root) while locked; probes
+%%    are not ignored in any phase; foreign probes are always forwarded exactly
+%%    once per waitee set transition.
+%%  - Added seen_probes set to suppress infinite flooding of identical probes.
+%%
+%% Limitations / Simplifications:
+%%  - Only tracks a single outstanding outgoing call (typical for a gen_server
+%%    doing a synchronous call). Nested outgoing calls would require a stack.
+%%  - Relies on an external monitor register process (MonRegister) to route
+%%    {trace, _, send, ToPid, {probe, ProbeId}} to the correct tracer.
+%%
+%% Deadlock notification: subscribers receive {?DEADLOCK, ProbeId} exactly once
+%% when a cycle involving the root probe is detected.
 -module(ddmon).
 -behaviour(gen_statem).
+
+-include("ddmon.hrl").
 
 %% API
 -export([ start/2, start/3, start/4
@@ -10,7 +58,8 @@
 -export([init/1, callback_mode/0]).
 -export([terminate/3, terminate/2]).
 
--export([handle_event/4]).
+%% Single state implementation
+-export([state_running/3]).
 
 %% DDMon API
 -export([]).
@@ -19,30 +68,17 @@
 %%% DDMon Types
 %%%======================
 
--type process_name() ::
-        pid()
-      | atom()
-      | {global, term()}
-      | {via, module(), term()}.
-
 -record(data,
-    { worker               :: process_name() % the traced worker process
-    , mon_register         :: process_name() % registry of monitors for each worker process
-    , mon_state            :: process_name() % the process holding the monitor state
-    , deadlock_subscribers :: [process_name()]
+    { worker              :: pid()
+    , mon_register        :: pid()
+    , probe               :: gen_server:request_id() | undefined
+    , waiting_on          :: pid() | undefined       % callee we are currently blocked on
+    , waitees             :: [gen_server:request_id()] % callers waiting on us
+    , seen_probes         :: sets:set()              % foreign probe ids already forwarded
+    , deadlock_subscribers :: [pid()]
     }).
-
--define(RECV_INFO(MsgInfo), {'receive', MsgInfo}).
--define(SEND_INFO(To, MsgInfo), {send, To, MsgInfo}).
--define(PROBE(Probe), {probe, Probe}).
--define(QUERY_INFO(ReqId), {query, ReqId}).
--define(RESP_INFO(ReqId), {response, ReqId}).
--define(NOTIFY(From, MsgInfo), {notify, From, MsgInfo}).
--define(HANDLE_RECV(From, MsgInfo), {'receive', From, MsgInfo}).
-
--define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
--define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
--define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
+-export_type([data/0]).
+-type data() :: #data{}.
 
 %%%======================
 %%% API Functions
@@ -66,35 +102,13 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 %%% gen_statem Callbacks
 %%%======================
 
-init({Worker, MonRegister, _Opts}) ->
+init({Worker, MonRegister, Opts}) ->
     process_flag(trap_exit, true),
-    
-    mon_reg:set_mon(MonRegister, Worker, self()),
+    put(trace_int, proplists:get_value(trace_int, Opts, true)),
+    put(live_log, proplists:get_value(live_log, Opts, false)),
 
-    init_trace(Worker),
-    Data = #data{ worker = Worker
-                , mon_register = MonRegister
-                , mon_state = ddmon_monitor:start_link(MonRegister)
-                , deadlock_subscribers = []
-                },
-
-    
-
-    {ok, synced, Data, []}.
-
-callback_mode() ->
-    state_event_function.
-
-terminate(Reason, _State, Data) ->
-    terminate(Reason, Data).
-terminate(_Reason, _Data) ->
-    ok.
-
-
-init_trace(Worker) ->
-    Session = trace:session_create(?MODULE, self(), []),
     TraceOpts = ['send', 'receive', strict_monotonic_timestamp],
-    trace:process(Session, Worker, true, TraceOpts),
+    erlang:trace(Worker, true, TraceOpts),
 
     erlang:trace_pattern(
       'send',
@@ -107,140 +121,142 @@ init_trace(Worker) ->
       [ {['_', '_', {'$gen_call', '_', '_'}], [], []} % gen_server call
       , {['_', '_', {'$1', '_'}], [{'=/=', '$1', code_server}], []} % gen_server reply
       ]
-     ).
+     ),
+
+    Data = #data{ worker = Worker
+                , mon_register = MonRegister
+                , probe = undefined
+                , waiting_on = undefined
+                , waitees = []
+                , seen_probes = sets:new()
+                , deadlock_subscribers = []
+                },
+    {ok, state_running, Data, []}.
+
+callback_mode() ->
+    state_functions.
+
+terminate(Reason, _State, Data) ->
+    terminate(Reason, Data).
+terminate(_Reason, _Data) ->
+    ok.
 
 %%%======================
-%%% All-time interactions
+%%% State Function (single state)
 %%%======================
 
-handle_event(cast, _State, {subscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
-    Data1 = Data#data{deadlock_subscribers = [From | DLS]},
-    {keep_state, Data1};
-
-handle_event(cast, _State, {unsubscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
-    Data1 = Data#data{deadlock_subscribers = lists:delete(From, DLS)},
-    {keep_state, Data1};
-
-%%%======================
-%%% State Function --- traces
-%%%======================
-
-%% Send query
-handle_event(info, _State,
-             {trace, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Send response
-handle_event(info, _State,
-             {trace, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Receive query
-handle_event(info, _State,
-             {trace, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
-             _Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Receive response
-handle_event(info, _State,
-             {trace, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
-             _Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%%%======================
-%%% State Function --- events
-%%%======================
-
-%% Send query
-handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), Data) ->
-    call_mon_state({lock, ReqId}, Data),
-    send_notif(To, MsgInfo, Data),
+state_running(cast, {subscribe, Pid}, Data=#data{deadlock_subscribers = Subs}) ->
+    {keep_state, Data#data{deadlock_subscribers = lists:usort([Pid|Subs])}, []};
+state_running(cast, {unsubscribe, Pid}, Data) ->
+    {keep_state, Data#data{deadlock_subscribers = lists:delete(Pid, Data#data.deadlock_subscribers)}, []};
+state_running(cast, _Other, _Data) ->
     keep_state_and_data;
 
-%% Send response
-handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), Data) ->
-    call_mon_state({unwait, ReqId}, Data),
-    send_notif(To, MsgInfo, Data),
-    keep_state_and_data;
+%% Trace: outgoing messages from worker
+state_running(info, {trace, _FromTracer, send, ToPid, Msg, _Ts}, Data0) ->
+    case Msg of
+        {'$gen_call', ReqId, _Call} ->
+            %% We initiate (or extend) a wait.
+            Probe0 = Data0#data.probe,
+            NewProbe = case Probe0 of undefined -> ReqId; _ -> Probe0 end,
+            NewData1 = Data0#data{probe = NewProbe, waiting_on = ToPid},
+            %% If we just created a new probe (root), propagate to existing waitees.
+            NewData2 = case {Probe0, NewProbe, Data0#data.waitees} of
+                           {undefined, _Created, []} -> NewData1;
+                           {undefined, _Created, Waitees} -> propagate_probe(Waitees, NewProbe, NewData1);
+                           _ -> NewData1
+                       end,
+            send_probe(ToPid, NewProbe, NewData2),
+            {keep_state, NewData2, []};
+        {'$', ReplyReqId, _Reply} ->
+            %% Outgoing reply -> caller no longer waits on us
+            NewData = remove_waitee(ReplyReqId, Data0),
+            {keep_state, NewData, []};
+        _ ->
+            keep_state_and_data
+    end;
 
-%% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, synced, ?RECV_INFO(MsgInfo), Data) ->
-    {next_state, {wait_mon, MsgInfo}, Data};
+%% Trace: incoming messages to worker
+state_running(info, {trace, _FromTracer, 'receive', _FromPid, Msg, _Ts}, Data0) ->
+    case Msg of
+        {'$gen_call', ReqId, _Call} ->
+            %% A caller becomes waiting on us.
+            NewData1 = add_waitee(ReqId, Data0),
+            %% If we hold a probe (we are locked) propagate it to the new waitee immediately.
+            NewData2 = case NewData1#data.probe of
+                           undefined -> NewData1;
+                           ProbeId -> propagate_probe([ReqId], ProbeId, NewData1)
+                       end,
+            {keep_state, NewData2, []};
+        {'$', _IncomingReplyReqId, _Reply} ->
+            %% Reply to our outstanding call -> we may unlock.
+            NewData1 = case Data0#data.probe of
+                           undefined -> Data0; % was not locked
+                           _ -> Data0
+                       end,
+            %% Clear waiting_on when matching reply.
+            NewData2 = case NewData1#data.waiting_on of
+                           undefined -> NewData1;
+                           _Pid -> NewData1#data{waiting_on = undefined}
+                       end,
+            %% If no longer waiting on anyone, drop probe.
+            NewData3 = case NewData2#data.waiting_on of
+                           undefined -> NewData2#data{probe = undefined};
+                           _ -> NewData2
+                       end,
+            {keep_state, NewData3, []};
+        _ ->
+            keep_state_and_data
+    end;
 
-%% Receive dispatcher: Synced -> wait for process trace
-handle_event(cast, synced, ?NOTIFY(From, MsgInfo), Data) ->
-    {next_state, {wait_proc, From, MsgInfo}, Data};
+%% Probe propagation / detection
+state_running(info, {trace, _FromTracer, probe, ProbeId}, Data0) ->
+    case Data0#data.probe of
+        ProbeId ->
+            %% Our own probe returned -> cycle / deadlock.
+            DeadlockMsg = {?DEADLOCK, ProbeId},
+            lists:foreach(fun(P) -> P ! DeadlockMsg end, Data0#data.deadlock_subscribers),
+            %% We stay locked but clear probe so we don't re-report.
+            {keep_state, Data0#data{probe = undefined}, []};
+        _Other ->
+            %% Foreign probe: forward if not seen before.
+            Seen = Data0#data.seen_probes,
+            case sets:is_element(ProbeId, Seen) of
+                true -> keep_state_and_data;
+                false ->
+                    Data1 = Data0#data{seen_probes = sets:add_element(ProbeId, Seen)},
+                    Data2 = propagate_probe(Data1#data.waitees, ProbeId, Data1),
+                    {keep_state, Data2, []}
+            end
+    end;
 
-%% Receive dispatcher: Receive awaited notification
-handle_event(cast, {wait_mon, MsgInfo}, ?NOTIFY(From, MsgInfo), Data) ->
-    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
-    {next_state, handle_recv, Data, Event};
+%% Worker termination
+state_running(info, {'EXIT', Pid, _Reason}, Data=#data{worker = Pid}) ->
+    {stop, normal, Data};
 
-%% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(cast, {wait_mon, _MsgInfo}, _Msg, _Data) ->
-    {keep_state_and_data, postpone};
-
-%% Receive dispatcher: Receive awaited process trace
-handle_event(internal, {wait_proc, From}, ?RECV_INFO(MsgInfo), Data) ->
-    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
-    {next_state, handle_recv, Data, Event};
-
-%% Receive dispatcher: Awaiting process trace, got irrelevant message
-handle_event(internal, {wait_proc, _From}, _Msg, _Data) ->
-    {keep_state_and_data, postpone};
-
-%% Receive response
-handle_event(internal, handle_recv, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), Data) ->
-    call_mon_state(unlock, Data),
-    {next_state, synced, Data};
-
-%% Receive query
-handle_event(internal, handle_recv, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), Data) ->
-    call_mon_state({wait, From}, Data),
-    {next_state, synced, Data};
-
-%% Postpone while handling recv
-handle_event(internal, handle_recv, _Msg, _Data) ->
-    {keep_state_and_data, postpone};
-
-%% Receive probe
-handle_event(cast, synced, ?PROBE(Probe), Data) ->
-    call_mon_state(?PROBE(Probe), Data),
-    keep_state_and_data;
-
-%% Postpone probe
-handle_event(cast, _State, ?PROBE(_), _Data) ->
-    {keep_state_and_data, postpone}.
-
+%% Ignore everything else
+state_running(_Type, _Content, _Data) ->
+    keep_state_and_data.
 
 %%%======================
 %%% Internal Helper Functions
 %%%======================
 
-send_notif(To, MsgInfo, Data) ->
-    Mon = mon_of(To, Data),
-    Worker = Data#data.worker,
-    Msg = ?NOTIFY(Worker, MsgInfo),
-    gen_statem:cast(Mon, Msg).
+add_waitee(ReqId, Data=#data{waitees = Ws}) ->
+    case lists:member(ReqId, Ws) of
+        true -> Data;
+        false -> Data#data{waitees = [ReqId|Ws]}
+    end.
 
-call_mon_state(Msg, #data{mon_state = Pid}) ->
-    Resp = gen_server:call(Pid, Msg),
-    handle_mon_state_response(Resp).
+remove_waitee(ReplyReqId, Data=#data{waitees = Ws}) ->
+    Data#data{waitees = [ R || R <- Ws, R =/= ReplyReqId ]}.
 
-handle_mon_state_response(ok) ->
-    ok;
-handle_mon_state_response(deadlock) ->
-    throw(deadlock);
-handle_mon_state_response({send, Sends}) ->
-    [ gen_statem:cast(ToPid, ?PROBE(Probe)) 
-      || {ToPid, ?PROBE(Probe)} <- Sends
-    ].
+send_probe(ToPid, ProbeId, #data{mon_register = MonReg}) ->
+    MonReg ! {trace, self(), send, ToPid, {probe, ProbeId}},
+    ok.
 
-mon_of(To, Data) ->
-    mon_reg:mon_of(Data#data.mon_register, To).
+propagate_probe([], _ProbeId, Data) -> Data;
+propagate_probe([ReqId|Rest], ProbeId, Data) ->
+    {FromPid, _Tag} = ReqId,
+    send_probe(FromPid, ProbeId, Data),
+    propagate_probe(Rest, ProbeId, Data).
