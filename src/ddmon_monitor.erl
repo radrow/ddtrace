@@ -83,4 +83,4 @@ handle_cast(_Msg, State) ->
 %% Private functions
 
 via_mon(State, Pid) ->
-    mon_register:via(State#state.mon_register, Pid).
+    mon_reg:via(State#state.mon_register, Pid).

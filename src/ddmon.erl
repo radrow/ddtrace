@@ -1,8 +1,6 @@
 -module(ddmon).
 -behaviour(gen_statem).
 
--include("ddmon.hrl").
-
 %% API
 -export([ start/2, start/3, start/4
         , start_link/2, start_link/3, start_link/4
@@ -34,6 +32,17 @@
     , deadlock_subscribers :: [process_name()]
     }).
 
+-define(RECV_INFO(MsgInfo), {'receive', MsgInfo}).
+-define(SEND_INFO(To, MsgInfo), {send, To, MsgInfo}).
+-define(PROBE(Probe), {probe, Probe}).
+-define(QUERY_INFO(ReqId), {query, ReqId}).
+-define(RESP_INFO(ReqId), {response, ReqId}).
+-define(NOTIFY(From, MsgInfo), {notify, From, MsgInfo}).
+-define(HANDLE_RECV(From, MsgInfo), {'receive', From, MsgInfo}).
+
+-define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
+-define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
+-define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
 
 %%%======================
 %%% API Functions
@@ -59,6 +68,8 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 
 init({Worker, MonRegister, _Opts}) ->
     process_flag(trap_exit, true),
+    
+    mon_reg:set_mon(MonRegister, Worker, self()),
 
     init_trace(Worker),
     Data = #data{ worker = Worker
@@ -66,7 +77,10 @@ init({Worker, MonRegister, _Opts}) ->
                 , mon_state = ddmon_monitor:start_link(MonRegister)
                 , deadlock_subscribers = []
                 },
-    {ok, state_running, Data, []}.
+
+    
+
+    {ok, synced, Data, []}.
 
 callback_mode() ->
     state_event_function.
@@ -95,107 +109,113 @@ init_trace(Worker) ->
       ]
      ).
 
+%%%======================
+%%% All-time interactions
+%%%======================
+
+handle_event(cast, _State, {subscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
+    Data1 = Data#data{deadlock_subscribers = [From | DLS]},
+    {keep_state, Data1};
+
+handle_event(cast, _State, {unsubscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
+    Data1 = Data#data{deadlock_subscribers = lists:delete(From, DLS)},
+    {keep_state, Data1};
 
 %%%======================
 %%% State Function --- traces
 %%%======================
 
--define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
--define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
--define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
-
 %% Send query
 handle_event(info, _State,
              {trace, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
              _Data) ->
-    {keep_state_and_data,
-     [{next_event, internal, {send, {query, To, ReqId}}}]
-    };
+    Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
 
 %% Send response
 handle_event(info, _State,
              {trace, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _Data) ->
-    {keep_state_and_data,
-     [{next_event, internal, {send, {response, To, ReqId}}}]
-    };
+    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
 
 %% Receive query
 handle_event(info, _State,
-             {trace, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
+             {trace, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
              _Data) ->
-    {keep_state_and_data,
-     [{next_event, internal, {'receive', {query, From, ReqId}}}]
-    };
+    Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
 
 %% Receive response
 handle_event(info, _State,
              {trace, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
              _Data) ->
-    {keep_state_and_data,
-     [{next_event, internal, {'receive', {response, ReqId}}}]
-    };
+    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
+    {keep_state_and_data, [Event]};
 
 %%%======================
 %%% State Function --- events
 %%%======================
 
 %% Send query
-handle_event(internal, _State, {send, {query, To, ReqId}}, Data) ->
+handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), Data) ->
     call_mon_state({lock, ReqId}, Data),
-    send_notif(To, Data),
+    send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, _State, {send, {response, To, ReqId}}, Data) ->
+handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), Data) ->
     call_mon_state({unwait, ReqId}, Data),
-    send_notif(To, Data),
+    send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, synced, Event = {'receive', {query, From, _ReqId}}, Data) ->
-    FromMon = mon_of(From, Data),
-    {next_state, {wait_mon, {query, FromMon}, Event}, Data};
-handle_event(internal, synced, Event = {'receive', {response, _ReqId}}, Data) ->
-    {next_state, {wait_mon, response, Event}, Data};
+handle_event(internal, synced, ?RECV_INFO(MsgInfo), Data) ->
+    {next_state, {wait_mon, MsgInfo}, Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
-handle_event(cast, synced, {notify, FromMon}, Data) ->
-    {next_state, {wait_proc, FromMon}, Data};
+handle_event(cast, synced, ?NOTIFY(From, MsgInfo), Data) ->
+    {next_state, {wait_proc, From, MsgInfo}, Data};
 
 %% Receive dispatcher: Receive awaited notification
-handle_event(cast, {wait_mon, FromMon, Event}, {notify, FromMon}, Data) ->
-    {next_state, synced, Data, [{next_event, internal, {add_waitee, ReqId, Pid}}]};
+handle_event(cast, {wait_mon, MsgInfo}, ?NOTIFY(From, MsgInfo), Data) ->
+    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
+    {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(cast, {wait_mon, FromMon, Event}, _Msg, _Data) ->
+handle_event(cast, {wait_mon, _MsgInfo}, _Msg, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, {wait_proc, From}, {'receive', {_Kind, From, _ReqId}}, Data) ->
-    {next_state, handle_recv, Data, postpone};
+handle_event(internal, {wait_proc, From}, ?RECV_INFO(MsgInfo), Data) ->
+    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
+    {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
 handle_event(internal, {wait_proc, _From}, _Msg, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive response
-handle_event(internal, handle_recv, {'receive', response, ReqId, Pid}, Data) ->
+handle_event(internal, handle_recv, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), Data) ->
     call_mon_state(unlock, Data),
     {next_state, synced, Data};
 
 %% Receive query
-handle_event(internal, handle_recv, {'receive', query, ReqId, Pid}, Data) ->
-    call_mon_state({wait, Pid}, Data),
+handle_event(internal, handle_recv, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), Data) ->
+    call_mon_state({wait, From}, Data),
     {next_state, synced, Data};
 
+%% Postpone while handling recv
+handle_event(internal, handle_recv, _Msg, _Data) ->
+    {keep_state_and_data, postpone};
+
 %% Receive probe
-handle_event(cast, synced, {probe, Probe}, Data) ->
-    call_mon_state({probe, Probe}, Data),
+handle_event(cast, synced, ?PROBE(Probe), Data) ->
+    call_mon_state(?PROBE(Probe), Data),
     keep_state_and_data;
 
 %% Postpone probe
-handle_event(cast, _State, {probe, _Probe}, _Data) ->
+handle_event(cast, _State, ?PROBE(_), _Data) ->
     {keep_state_and_data, postpone}.
 
 
@@ -203,8 +223,11 @@ handle_event(cast, _State, {probe, _Probe}, _Data) ->
 %%% Internal Helper Functions
 %%%======================
 
-send_notif(To, Data) ->
-    gen_statem:cast(mon_of(To, Data), {notify, self()}).
+send_notif(To, MsgInfo, Data) ->
+    Mon = mon_of(To, Data),
+    Worker = Data#data.worker,
+    Msg = ?NOTIFY(Worker, MsgInfo),
+    gen_statem:cast(Mon, Msg).
 
 call_mon_state(Msg, #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
@@ -215,9 +238,9 @@ handle_mon_state_response(ok) ->
 handle_mon_state_response(deadlock) ->
     throw(deadlock);
 handle_mon_state_response({send, Sends}) ->
-    [ gen_statem:cast(ToPid, {probe, Probe}) 
-      || {ToPid, {probe, Probe}} <- Sends
+    [ gen_statem:cast(ToPid, ?PROBE(Probe)) 
+      || {ToPid, ?PROBE(Probe)} <- Sends
     ].
 
 mon_of(To, Data) ->
-    ddmon_monitor:mon_of(To, Data#data.mon_register).
+    mon_reg:mon_of(Data#data.mon_register, To).

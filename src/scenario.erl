@@ -101,18 +101,20 @@ scenario_time(Scenario) ->
 
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
-    Init = self(),
-
-    {LogKnown, LogFresh} = logging:mk_ets(),
-    logging:conf(Opts),
-
-    logging:remember(Init, 'I', 0),
-    Routers = proplists:get_all_values(router, Opts),
-
+    %% Init = self(),
+    
     {ok, Supervisor} = scenario_supervisor:start_link(),
 
     GsModule = 'Elixir.Ddmon.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
+
+    MonReg = mon_register:start_link(),
+
+    %% {LogKnown, LogFresh} = logging:mk_ets(),
+    %% logging:conf(Opts),
+
+    %% logging:remember(Init, 'I', 0),
+    Routers = proplists:get_all_values(router, Opts),
 
     ProcMap = maps:from_list(
             [ begin
@@ -126,19 +128,20 @@ run_scenario(Scenario, Opts) ->
                         restart => transient,
                         shutdown => 5000,
                         type => worker},
-                  {ok, M} = supervisor:start_child(Supervisor, ChildSpec),
-                  P = gen_statem:call(M, '$get_child'),
-                  logging:remember(M, 'M', I),
-                  logging:remember(P, 'P', I),
+                  {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
+                  M = ddmon:start_link(P, MonReg),
+
+                  %% logging:remember(M, 'M', I),
+                  %% logging:remember(P, 'P', I),
                   {I, {M, P}}
               end
              || I <- lists:seq(0, scenario_size(Scenario))
             ]
            ),
 
-    [ logging:remember(SessionId, 'S', 0)
-     || {SessionId, _} <- Scenario
-    ],
+    %% [ logging:remember(SessionId, 'S', 0)
+    %%  || {SessionId, _} <- Scenario
+    %% ],
 
     [ error({init_on_router, SessionId, SInit})
      || {SessionId, {SInit, _}} <- Scenario,
@@ -147,23 +150,23 @@ run_scenario(Scenario, Opts) ->
 
     FScenario = fix_scenario(ProcMap, Scenario),
 
-    FullProcList =
-        maps:fold(
-          fun(I, {M, P}, Acc) ->
-                  SubM = gen_server:call(P, '$get_workers'),
-                  SubP = [gen_server:call(SM, '$get_child') || SM <- SubM],
-                  Sub = lists:zip(SubM, SubP),
-                  [ begin
-                        logging:remember(SM, {'M', SI}, I),
-                        logging:remember(SP, {'P', SI}, I)
-                    end
-                   || {SI, {SM, SP}} <- lists:enumerate(Sub)
-                  ],
-                  [{M, P} | Sub ++ Acc]
-          end,
-          [],
-          ProcMap
-         ),
+    %% FullProcList =
+    %%     maps:fold(
+    %%       fun(I, {M, P}, Acc) ->
+    %%               SubM = gen_server:call(P, '$get_workers'),
+    %%               SubP = [gen_server:call(SM, '$get_child') || SM <- SubM],
+    %%               Sub = lists:zip(SubM, SubP),
+    %%               [ begin
+    %%                     logging:remember(SM, {'M', SI}, I),
+    %%                     logging:remember(SP, {'P', SI}, I)
+    %%                 end
+    %%                || {SI, {SM, SP}} <- lists:enumerate(Sub)
+    %%               ],
+    %%               [{M, P} | Sub ++ Acc]
+    %%       end,
+    %%       [],
+    %%       ProcMap
+    %%      ),
 
     Timeout = case proplists:get_value(timeout, Opts, 0) of
                   0 -> scenario_time(FScenario)
@@ -171,11 +174,11 @@ run_scenario(Scenario, Opts) ->
                            + 2000;
                   N when is_integer(N) -> N
               end,
-    %% io:format("TT: ~p\n", [Timeout]),
-    logging:log_scenario(FScenario, Timeout),
+    %% %% io:format("TT: ~p\n", [Timeout]),
+    %% logging:log_scenario(FScenario, Timeout),
 
-    Tracer = tracer:start_link(FullProcList, [{logging_ets_known, LogKnown}, {logging_ets_fresh, LogFresh} | Opts]),
-    InitTime = erlang:monotonic_time(),
+    %% Tracer = tracer:start_link(FullProcList, [{logging_ets_known, LogKnown}, {logging_ets_fresh, LogFresh} | Opts]),
+    %% InitTime = erlang:monotonic_time(),
 
     Folder = fun({_SessionId, []}, ReqIds) -> ReqIds;
                 ({SessionId, {SessionInit, Session}}, ReqIds) ->
@@ -188,56 +191,51 @@ run_scenario(Scenario, Opts) ->
                                  timer:sleep(T),
                                  I
                          end,
-                     R =
-                         case proplists:get_value(unmonitored, Opts, false) of
-                             true ->
-                                 ddmon:send_request(SessionInitProc, {SessionId, Session});
-                             false ->
-                                 ddmon:send_request_report(SessionInitProc, {SessionId, Session})
-                         end,
-                     gen_statem:reqids_add(R, SessionId, ReqIds)
+                     R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
+                     gen_server:reqids_add(R, SessionId, ReqIds)
              end,
-    Reqs = lists:foldl(Folder, gen_statem:reqids_new(), FScenario),
+    Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
     Result = receive_responses(Reqs, Timeout),
     timer:sleep(500),
+    
+    Log = [],
+    %% %% Log = [{{1, 1}, self(), {wait, 0}}],
+    %% Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
 
-    %% Log = [{{1, 1}, self(), {wait, 0}}],
-    Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
+    %% case proplists:get_value(stats_csv, Opts, false) of
+    %%     false -> ok;
+    %%     SLogFile ->
+    %%         file:write_file(SLogFile, [logging:log_stats(Log)])
+    %% end,
+    %% [begin
+    %%      logging:log_trace(InitTime, lists:sort(Log)),
+    %%      logging:print_log_stats(Log)
+    %%  end
+    %%  || not proplists:get_value(live_log, Opts, false),
+    %%     not proplists:get_value(silent, Opts, false)
+    %% ],
 
-    case proplists:get_value(stats_csv, Opts, false) of
-        false -> ok;
-        SLogFile ->
-            file:write_file(SLogFile, [logging:log_stats(Log)])
-    end,
-    [begin
-         logging:log_trace(InitTime, lists:sort(Log)),
-         logging:print_log_stats(Log)
-     end
-     || not proplists:get_value(live_log, Opts, false),
-        not proplists:get_value(silent, Opts, false)
-    ],
+    %% case proplists:get_value(csv, Opts, false) of
+    %%     false -> ok;
+    %%     CsvPath ->
+    %%         %% io:format("Preparing csv ~p\n", [CsvPath]),
+    %%         Csv = logging:trace_csv(InitTime, lists:sort(Log)),
+    %%         %% io:format("Done csv\n"),
+    %%         ok = file:write_file(CsvPath, Csv)
+    %% end,
 
-    case proplists:get_value(csv, Opts, false) of
-        false -> ok;
-        CsvPath ->
-            %% io:format("Preparing csv ~p\n", [CsvPath]),
-            Csv = logging:trace_csv(InitTime, lists:sort(Log)),
-            %% io:format("Done csv\n"),
-            ok = file:write_file(CsvPath, Csv)
-    end,
+    %% case Result of
+    %%     ok ->
+    %%         logging:log_terminate();
+    %%     {deadlock, Deadlocks} ->
+    %%         logging:log_deadlocks(Deadlocks);
+    %%     timeout ->
+    %%         logging:log_timeout()
+    %% end,
 
-    case Result of
-        ok ->
-            logging:log_terminate();
-        {deadlock, Deadlocks} ->
-            logging:log_deadlocks(Deadlocks);
-        timeout ->
-            logging:log_timeout()
-    end,
-
-    unlink(Supervisor),
-    exit(Supervisor, shutdown),
+    %% unlink(Supervisor),
+    %% exit(Supervisor, shutdown),
 
     {Log, Result}.
 
