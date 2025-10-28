@@ -28,12 +28,12 @@
       | {via, module(), term()}.
 
 -record(data,
-    { worker              :: process_name()
-    , mon_register        :: process_name()
-    , mon_state           :: process_name()
+    { worker               :: process_name() % the traced worker process
+    , mon_register         :: process_name() % registry of monitors for each worker process
+    , mon_state            :: process_name() % the process holding the monitor state
     , deadlock_subscribers :: [process_name()]
     }).
--type data() :: #data{}.
+
 
 %%%======================
 %%% API Functions
@@ -100,15 +100,16 @@ init_trace(Worker) ->
 %%% State Function --- traces
 %%%======================
 
--define(GS_CALL(ReqId), {'$gen_call', {_, [alias|ReqId]}, _}).
+-define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
+-define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
 -define(GS_RESP(ReqId), {[alias|ReqId], _Msg}).
 
 %% Send query
 handle_event(info, _State,
-             {trace, _Worker, 'send', ?GS_CALL(ReqId), _Ts},
+             {trace, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
              _Data) ->
     {keep_state_and_data,
-     [{next_event, internal, {send, query, To, ReqId}}]
+     [{next_event, internal, {send, {query, To, ReqId}}}]
     };
 
 %% Send response
@@ -116,23 +117,23 @@ handle_event(info, _State,
              {trace, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _Data) ->
     {keep_state_and_data,
-     [{next_event, internal, {send, response, To, ReqId}}]
+     [{next_event, internal, {send, {response, To, ReqId}}}]
     };
 
 %% Receive query
 handle_event(info, _State,
-             {trace, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
+             {trace, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
              _Data) ->
     {keep_state_and_data,
-     [{next_event, internal, {'receive', query, From, ReqId}}]
+     [{next_event, internal, {'receive', {query, From, ReqId}}}]
     };
 
 %% Receive response
 handle_event(info, _State,
-             {trace, From, 'receive', ?GS_RESP(ReqId), _Ts},
+             {trace, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
              _Data) ->
     {keep_state_and_data,
-     [{next_event, internal, {'receive', response, ReqId, Pid}}]
+     [{next_event, internal, {'receive', {response, ReqId}}}]
     };
 
 %%%======================
@@ -140,21 +141,23 @@ handle_event(info, _State,
 %%%======================
 
 %% Send query
-handle_event(internal, State, {send, query, To, ReqId}, Data) ->
+handle_event(internal, _State, {send, {query, To, ReqId}}, Data) ->
     call_mon_state({lock, ReqId}, Data),
-    send_notif(To, Mon),
+    send_notif(To, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, State, {send, response, To, ReqId}, Data) ->
+handle_event(internal, _State, {send, {response, To, ReqId}}, Data) ->
     call_mon_state({unwait, ReqId}, Data),
-    send_notif(To, Mon),
+    send_notif(To, Data),
     keep_state_and_data;
 
 %% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, synced, Event = {'receive', _Kind, From, _ReqId}, Data) ->
+handle_event(internal, synced, Event = {'receive', {query, From, _ReqId}}, Data) ->
     FromMon = mon_of(From, Data),
-    {next_state, {wait_mon, FromMon, Event}, Data};
+    {next_state, {wait_mon, {query, FromMon}, Event}, Data};
+handle_event(internal, synced, Event = {'receive', {response, _ReqId}}, Data) ->
+    {next_state, {wait_mon, response, Event}, Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
 handle_event(cast, synced, {notify, FromMon}, Data) ->
@@ -164,16 +167,16 @@ handle_event(cast, synced, {notify, FromMon}, Data) ->
 handle_event(cast, {wait_mon, FromMon, Event}, {notify, FromMon}, Data) ->
     {next_state, synced, Data, [{next_event, internal, {add_waitee, ReqId, Pid}}]};
 
-%% Receive dispatcher: Awaiting notification, irrelevant message
+%% Receive dispatcher: Awaiting notification, got irrelevant message
 handle_event(cast, {wait_mon, FromMon, Event}, _Msg, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, {wait_proc, From}, {'receive', _Kind, _From, _ReqId}, Data) ->
+handle_event(internal, {wait_proc, From}, {'receive', {_Kind, From, _ReqId}}, Data) ->
     {next_state, handle_recv, Data, postpone};
 
-%% Receive dispatcher: Awaiting process trace, irrelevant message
-handle_event(internal, {wait_proc, From}, _Msg, _Data) ->
+%% Receive dispatcher: Awaiting process trace, got irrelevant message
+handle_event(internal, {wait_proc, _From}, _Msg, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive response
