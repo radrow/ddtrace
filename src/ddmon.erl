@@ -113,11 +113,11 @@ init_trace(Worker) ->
 %%% All-time interactions
 %%%======================
 
-handle_event(cast, _State, {subscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
+handle_event(cast, {subscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
     Data1 = Data#data{deadlock_subscribers = [From | DLS]},
     {keep_state, Data1};
 
-handle_event(cast, _State, {unsubscribe, From}, Data = #data{deadlock_subscribers = DLS}) ->
+handle_event(cast, {unsubscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
     Data1 = Data#data{deadlock_subscribers = lists:delete(From, DLS)},
     {keep_state, Data1};
 
@@ -126,29 +126,33 @@ handle_event(cast, _State, {unsubscribe, From}, Data = #data{deadlock_subscriber
 %%%======================
 
 %% Send query
-handle_event(info, _State,
+handle_event(info,
              {trace, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
+             _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
 %% Send response
-handle_event(info, _State,
+handle_event(info,
              {trace, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
+             _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
 %% Receive query
-handle_event(info, _State,
+handle_event(info,
              {trace, _Worker, 'receive', ?GS_CALL(ReqId), _Ts},
+             _State,
              _Data) ->
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
 %% Receive response
-handle_event(info, _State,
+handle_event(info,
              {trace, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
+             _State,
              _Data) ->
     Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
@@ -158,64 +162,64 @@ handle_event(info, _State,
 %%%======================
 
 %% Send query
-handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) ->
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, _State, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(ReqId)), _State, Data) ->
     call_mon_state({unwait, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, synced, ?RECV_INFO(MsgInfo), Data) ->
+handle_event(internal, ?RECV_INFO(MsgInfo), synced, Data) ->
     {next_state, {wait_mon, MsgInfo}, Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
-handle_event(cast, synced, ?NOTIFY(From, MsgInfo), Data) ->
+handle_event(cast, ?NOTIFY(From, MsgInfo), synced, Data) ->
     {next_state, {wait_proc, From, MsgInfo}, Data};
 
 %% Receive dispatcher: Receive awaited notification
-handle_event(cast, {wait_mon, MsgInfo}, ?NOTIFY(From, MsgInfo), Data) ->
+handle_event(cast, ?NOTIFY(From, MsgInfo), {wait_mon, MsgInfo}, Data) ->
     Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(cast, {wait_mon, _MsgInfo}, _Msg, _Data) ->
+handle_event(cast, _Msg, {wait_mon, _MsgInfo}, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, {wait_proc, From}, ?RECV_INFO(MsgInfo), Data) ->
+handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From}, Data) ->
     Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
-handle_event(internal, {wait_proc, _From}, _Msg, _Data) ->
+handle_event(internal, _Msg, {wait_proc, _From}, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive response
-handle_event(internal, handle_recv, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), Data) ->
+handle_event(internal, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), handle_recv, Data) ->
     call_mon_state(unlock, Data),
     {next_state, synced, Data};
 
 %% Receive query
-handle_event(internal, handle_recv, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), Data) ->
+handle_event(internal, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), handle_recv, Data) ->
     call_mon_state({wait, From}, Data),
     {next_state, synced, Data};
 
 %% Postpone while handling recv
-handle_event(internal, handle_recv, _Msg, _Data) ->
+handle_event(internal, _Msg, handle_recv, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive probe
-handle_event(cast, synced, ?PROBE(Probe), Data) ->
+handle_event(cast, ?PROBE(Probe), synced, Data) ->
     call_mon_state(?PROBE(Probe), Data),
     keep_state_and_data;
 
 %% Postpone probe
-handle_event(cast, _State, ?PROBE(_), _Data) ->
+handle_event(cast, ?PROBE(_), _State, _Data) ->
     {keep_state_and_data, postpone}.
 
 
