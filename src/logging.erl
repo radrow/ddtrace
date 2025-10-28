@@ -188,11 +188,9 @@ c_deadlocks(DLs) ->
 c_timeout() ->
     {[white, bold, underline, invert], "### TIMEOUT ###"}.
 
-c_msg({?MONITORED_CALL, Msg}) ->
-    c_msg(Msg);
 c_msg(Msg) when is_tuple(Msg) andalso size(Msg) > 0 ->
     c_msg(element(1, Msg));
-c_msg(?DEADLOCK) ->
+c_msg(deadlock) ->
     c_deadlock_msg();
 c_msg(Msg) ->
     c_thing(Msg).
@@ -427,9 +425,9 @@ ev_data_csv({query, From, Msg}) ->
 ev_data_csv({query, Msg}) ->
     #{data_type=>query, data=>Msg};
 
-ev_data_csv({reply, From, {?DEADLOCK, DL}}) ->
+ev_data_csv({reply, From, {deadlock, DL}}) ->
     #{data_type=>dl_notif, other=>From, data=>[index(X) || X <- DL]};
-ev_data_csv({reply, {?DEADLOCK, DL}}) ->
+ev_data_csv({reply, {deadlock, DL}}) ->
     #{data_type=>dl_notif, data=>[index(X) || X <- DL]};
 
 ev_data_csv({reply, From, Msg}) ->

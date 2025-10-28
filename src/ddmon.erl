@@ -34,20 +34,6 @@
     , deadlock_subscribers :: [process_name()]
     }).
 
--define(RECV_INFO(MsgInfo), {'receive', MsgInfo}).
--define(SEND_INFO(To, MsgInfo), {send, To, MsgInfo}).
--define(PROBE(Probe), {probe, Probe}).
--define(QUERY_INFO(ReqId), {query, ReqId}).
--define(RESP_INFO(ReqId), {response, ReqId}).
--define(NOTIFY(From, MsgInfo), {notify, From, MsgInfo}).
--define(HANDLE_RECV(From, MsgInfo), {'receive', From, MsgInfo}).
-
-%% -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
--define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, ReqId}, _}).
--define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
--define(GS_RESP_ALIAS(ReqId), {[alias|ReqId], _Msg}).
--define(GS_RESP(ReqId), {ReqId, _Msg}).
-
 %%%======================
 %%% API Functions
 %%%======================
@@ -82,8 +68,6 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
                 , mon_state = MonState
                 , deadlock_subscribers = []
                 },
-
-    
 
     {ok, synced, Data, []}.
 
@@ -161,7 +145,9 @@ handle_event(info,
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
     case mon_of(Data, From) of
         undefined ->
-            Events = [Event, {next_event, cast, ?NOTIFY(From, ?QUERY_INFO(ReqId))}];
+            %% If the sender is not being monitored, we fake monitor notification
+            FakeNotif = {next_event, cast, ?NOTIFY(From, ?QUERY_INFO(ReqId))},
+            Events = [Event, FakeNotif];
         _Pid ->
             Events = [Event]
     end,
@@ -295,7 +281,7 @@ handle_mon_state_response({send, Sends}, _Data) ->
     ok.
 
 notify_deadlock_subscribers(#data{deadlock_subscribers = Subs, worker = Worker}) ->
-    [ catch (Sub ! {?DEADLOCK, Worker}) || Sub <- Subs ],
+    [ catch (Sub ! {deadlock, Worker}) || Sub <- Subs ],
     ok.
 
 mon_of(Data, To) ->

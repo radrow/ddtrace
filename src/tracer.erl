@@ -3,8 +3,8 @@
  -include("ddmon.hrl").
 
  -export([ start_link/1, start_link/2
-     , finish/1, finish/2
-     ]).
+         , finish/1, finish/2
+         ]).
 
 
 start_link(Procs) ->
@@ -18,48 +18,33 @@ start_link(Procs, Opts) ->
 
 
 run_tracer(Init, Procs, Opts) ->
-        config_tracer(Opts),
+    config_tracer(Opts),
 
-        %% By default, trace only monitors (ddmon statem), not workers or ddmon_monitor
-        TraceMon = proplists:get_value(trace_mon, Opts, true),
-        put(trace_int, proplists:get_value(trace_int, Opts, true)),
-        put(live_log, proplists:get_value(live_log, Opts, false)),
+    %% By default, trace only monitors (ddmon statem), not workers or ddmon_monitor
+    TraceMon = proplists:get_value(trace_mon, Opts, true),
+    put(trace_int, proplists:get_value(trace_int, Opts, true)),
+    put(live_log, proplists:get_value(live_log, Opts, false)),
 
-        %% Normalize input: Procs can be [Pid] or [{Mon, _Proc}]
-        Mons0 = [ case X of {M, _} when is_pid(M) -> M; P when is_pid(P) -> P; _ -> undefined end
-                            || X <- Procs
-                        ],
-        Mons = [M || M <- Mons0, is_pid(M)],
+    %% Normalize input: Procs can be [Pid] or [{Mon, _Proc}]
+    Mons0 = [ case X of {M, _} when is_pid(M) -> M; P when is_pid(P) -> P; _ -> undefined end
+              || X <- Procs
+            ],
+    Mons = [M || M <- Mons0, is_pid(M)],
 
-        TraceOpts = ['send', 'receive', 'call', strict_monotonic_timestamp],
-        [ erlang:trace(M, true, TraceOpts) || TraceMon, M <- Mons ],
+    TraceOpts = ['send', 'receive', 'call', strict_monotonic_timestamp],
+    [ erlang:trace(M, true, TraceOpts) || TraceMon, M <- Mons ],
 
-        put({type, Init}, init),
-        put(init_time, erlang:monotonic_time()),
+    put({type, Init}, init),
+    put(init_time, erlang:monotonic_time()),
 
-        Init ! {self(), ready},
+    Init ! {self(), ready},
 
-        loop([]).
+    loop([]).
 
 
 config_tracer(Opts) ->
         logging:conf(Opts),
 
-        %% Send of gen_server/gen_statem queries and replies
-        erlang:trace_pattern(
-            'send',
-            [ {['_', {'$gen_call', '_', '_'}], [], []}
-            , {['_', {'_', '_'}], [], []}
-            ]
-         ),
-        erlang:trace_pattern(
-            'receive',
-            [ {['_', '_', {'$gen_call', '_', '_'}], [], []}
-            , {['_', '_', {'$1', '_'}], [{'=/=', '$1', code_server}], []}
-            ]
-         ),
-
-        %% Trace ddmon:handle_event/4 calls to create 'pick' events
         erlang:trace_pattern(
             {ddmon, handle_event, 4},
             [ {['_', '_', '_', '_'], [], [trace]} ],
