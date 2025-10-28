@@ -16,8 +16,6 @@
     , waitees             :: [process_name()] % callers waiting on us
     }).
 
--type state() :: #state{}.
-
 
 %% API
 
