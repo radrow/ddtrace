@@ -15,7 +15,7 @@
 -export([handle_event/4]).
 
 %% DDMon API
--export([]).
+-export([subscribe_deadlocks/1]).
 
 %%%======================
 %%% DDMon Types
@@ -31,7 +31,6 @@
     { worker               :: process_name() % the traced worker process
     , mon_register         :: process_name() % registry of monitors for each worker process
     , mon_state            :: process_name() % the process holding the monitor state
-    , deadlock_subscribers :: [process_name()]
     }).
 
 %%%======================
@@ -60,13 +59,12 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
     
     mon_reg:set_mon(MonRegister, Worker, self()),
-    {ok, MonState} = ddmon_monitor:start_link(MonRegister),
+    {ok, MonState} = ddmon_state:start_link(Worker, MonRegister),
 
     init_trace(Worker),
     Data = #data{ worker = Worker
                 , mon_register = MonRegister
                 , mon_state = MonState
-                , deadlock_subscribers = []
                 },
 
     {ok, synced, Data, []}.
@@ -105,13 +103,17 @@ handle_event(enter, _OldState, _NewState, _Data) ->
     %% This is only to allow tracer to log state transitions
     keep_state_and_data;
 
-handle_event(cast, {subscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
-    Data1 = Data#data{deadlock_subscribers = [From | DLS]},
-    {keep_state, Data1};
+handle_event({call, From}, subscribe, _State, Data) ->
+    cast_mon_state({subscribe, From}, Data),
+    keep_state_and_data;
 
-handle_event(cast, {unsubscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
-    Data1 = Data#data{deadlock_subscribers = lists:delete(From, DLS)},
-    {keep_state, Data1};
+%%%======================
+%%% handle_event: Deadlock propagation
+%%%======================
+
+handle_event(cast, ?DEADLOCK_PROP(DL), synced, Data) ->
+    cast_mon_state(?DEADLOCK_PROP(DL), Data),
+    keep_state_and_data;
 
 %%%======================
 %%% handle_event: Traces
@@ -207,7 +209,7 @@ handle_event(_Kind, _Msg, {wait_mon, _MsgInfo}, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From}, Data) ->
+handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From, MsgInfo}, Data) ->
     Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
     {next_state, handle_recv, Data, Event};
 
@@ -230,13 +232,20 @@ handle_event(internal, _Msg, handle_recv, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive probe
-handle_event(cast, ?PROBE(Probe), synced, Data) ->
-    call_mon_state(?PROBE(Probe), Data),
+handle_event(cast, ?PROBE(Probe, L), synced, Data) ->
+    call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 %% Postpone probe
-handle_event(cast, ?PROBE(_), _State, _Data) ->
+handle_event(cast, ?PROBE(_, _), _State, _Data) ->
     {keep_state_and_data, postpone}.
+
+%%%======================
+%%% Monitor user API
+%%%======================
+
+subscribe_deadlocks(Mon) ->
+    gen_statem:send_request(Mon, subscribe).
 
 
 %%%======================
@@ -253,25 +262,26 @@ send_notif(To, MsgInfo, Data) ->
             gen_statem:cast(Mon, Msg)
     end.
 
+
 call_mon_state(Msg, Data = #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
     handle_mon_state_response(Resp, Data).
 
+
+cast_mon_state(Msg, #data{mon_state = Pid}) ->
+    gen_server:cast(Pid, Msg).
+
+
 handle_mon_state_response(ok, _Data) ->
     ok;
-handle_mon_state_response(deadlock, Data) ->
-    %% Notify subscribers and keep running
-    notify_deadlock_subscribers(Data),
+handle_mon_state_response(deadlock, _Data) ->
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
-    [ gen_statem:cast(ToPid, ?PROBE(Probe))
-      || {ToPid, ?PROBE(Probe)} <- Sends
+    [ gen_statem:cast(ToPid, ?PROBE(Probe, L))
+      || {ToPid, ?PROBE(Probe, L)} <- Sends
     ],
     ok.
 
-notify_deadlock_subscribers(#data{deadlock_subscribers = Subs, worker = Worker}) ->
-    [ catch (Sub ! {deadlock, Worker}) || Sub <- Subs ],
-    ok.
 
 mon_of(Data, To) ->
     mon_reg:mon_of(Data#data.mon_register, To).

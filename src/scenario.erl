@@ -192,11 +192,14 @@ run_scenario(Scenario, Opts) ->
                                  I
                          end,
                      R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
-                     gen_server:reqids_add(R, SessionId, ReqIds)
+                     RD = ddmon:subscribe_deadlocks(mon_reg:mon_of(MonReg, SessionInitProc)),
+                     
+                     ReqIds1 = gen_server:reqids_add(R, SessionId, ReqIds),
+                     gen_server:reqids_add(RD, SessionId, ReqIds1)
              end,
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
-    Result = receive_responses(Reqs, Timeout),
+    Result = receive_responses(Reqs, gen_server:reqids_size(Reqs) div 2, Timeout),
     timer:sleep(500),
     
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
@@ -207,8 +210,8 @@ run_scenario(Scenario, Opts) ->
             file:write_file(SLogFile, [logging:log_stats(Log)])
     end,
     [begin
-         logging:log_trace(InitTime, lists:sort(Log)),
-         logging:print_log_stats(Log)
+         logging:log_trace(InitTime, lists:sort(Log))
+         %% logging:print_log_stats(Log)
      end
      || not proplists:get_value(live_log, Opts, false),
         not proplists:get_value(silent, Opts, false)
@@ -239,9 +242,14 @@ run_scenario(Scenario, Opts) ->
 
 
 %% Wait for all sessions to terminate, or timeout
-receive_responses(Reqs0, Time) ->
-    receive_responses(Reqs0, Time, []).
-receive_responses(Reqs0, Time, Deadlocks) ->
+receive_responses(Reqs0, Remaining, Time) ->
+    receive_responses(Reqs0, Remaining, Time, []).
+receive_responses(_Reqs, 0, _, Deadlocks) ->
+    case Deadlocks of
+        [] -> ok;
+        _ -> {deadlock, Deadlocks}
+    end;
+receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
     case gen_server:receive_response(Reqs0, Time, true) of
         no_request when Deadlocks =:= [] ->
             ok;
@@ -250,7 +258,11 @@ receive_responses(Reqs0, Time, Deadlocks) ->
         timeout ->
             timeout;
         {{reply, R}, _Session, Reqs1} ->
-            receive_responses(Reqs1, Time, case R of {deadlock, DL} -> [DL | Deadlocks]; _ -> Deadlocks end)
+            Deadlocks1 = case R of
+                            {deadlock, DL} -> [DL | Deadlocks];
+                            _ -> Deadlocks 
+                        end,
+            receive_responses(Reqs1, Remaining-1, Time, Deadlocks1)
     end.
 
 %% Parse scenario together with in-file options

@@ -158,22 +158,7 @@ c_reply(Msg) ->
     [c_reply(), "(", c_reqid(Msg), ")"].
 
 c_probe(Probe) ->
-    {yellow, name(Probe, 'P')}.
-
-%% c_query() ->
-%%     {blue_l, "query"}.
-
-%% c_query(Msg) ->
-%%     [c_query(), "(", c_msg(Msg), ")"].
-
-%% c_reply() ->
-%%     {green_l, "reply"}.
-
-%% c_reply(Msg) ->
-%%     [c_reply(), "(", c_msg(Msg), ")"].
-
-%% c_probe(Probe) ->
-%%     {yellow, name(Probe, 'probe_')}.
+    {yellow, name(Probe, 'p')}.
 
 
 c_terminate() ->
@@ -193,9 +178,6 @@ c_timeout() ->
 c_reqid(ReqId) ->
     I = index(ReqId, reqid),
     {[white_l, bold, italic], "i" ++ integer_to_list(I)}.
-
-c_deadlock_msg() ->
-    {[red, dim], "D"}.
 
 c_thing(Thing) ->
     {[white_l, bold, italic], lists:flatten(io_lib:format("~p", [Thing]))}.
@@ -269,21 +251,25 @@ c_msg_info(?RESP_INFO(ReqId)) ->
     c_reply(ReqId).
 
 c_event({Kind, Ev, State}) when Kind =:= internal; Kind =:= cast ->
-    ["[", c_state(State), "]\t",c_event(Ev)];
-c_event({info, Ev, _State}) when element(1, Ev) =:= trace_ts ->
-    "trace";
+    ["[", c_state(State), "]\t", c_event(Ev)];
 c_event(?RECV_INFO(MsgInfo)) ->
     ["? ", c_msg_info(MsgInfo)];
 c_event(?SEND_INFO(To, MsgInfo)) ->
     [c_who(To), " ! ", c_msg_info(MsgInfo)];
 c_event(?NOTIFY(From, MsgInfo)) ->
     [c_who(From), " ? ", c_msg_info(MsgInfo)];
-c_event(?PROBE(Probe)) ->
+c_event(?PROBE(Probe, _L)) ->
     [c_probe(Probe)];
 c_event(?HANDLE_RECV(From, MsgInfo)) ->
     ["{", c_who(From), " ? ", c_msg_info(MsgInfo), " }"];
 c_event({enter, OldState, NewState}) ->
     ["[", c_state(OldState), "]\t=> ", c_state(NewState)];
+c_event({info, Ev, _State}) when element(1, Ev) =:= trace_ts ->
+    "trace";
+c_event({{call, _}, _Ev, _State}) ->
+    "call";
+c_event(?DEADLOCK_PROP(DL)) ->
+    [{[red_l, bold, invert], " D "}, c_lock_list(DL)];
 c_event(T) ->
     c_thing(T).
 
@@ -514,7 +500,7 @@ c_timestamp(InitT, {T, _TimeIdx}) ->
     end.
 
 c_trace(InitT, Time, Who, What) ->
-    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time)]; _ -> "" end
+    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time), " "]; _ -> "" end
     , c_by(Who, c_event(What))
     ].
 

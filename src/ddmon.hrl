@@ -2,7 +2,7 @@
 
 -define(RECV_INFO(MsgInfo), {'receive', MsgInfo}).
 -define(SEND_INFO(To, MsgInfo), {send, To, MsgInfo}).
--define(PROBE(Probe), {probe, Probe}).
+-define(PROBE(Probe, Vis), {probe, Probe, Vis}).
 -define(QUERY_INFO(ReqId), {query, ReqId}).
 -define(RESP_INFO(ReqId), {response, ReqId}).
 -define(NOTIFY(From, MsgInfo), {notify, From, MsgInfo}).
@@ -13,3 +13,5 @@
 -define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
 -define(GS_RESP_ALIAS(ReqId), {[alias|ReqId], _Msg}).
 -define(GS_RESP(ReqId), {ReqId, _Msg}).
+
+-define(DEADLOCK_PROP(DL), {'$ddmon_deadlock_prop', DL}).
