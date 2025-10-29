@@ -31,7 +31,7 @@ run_tracer(Init, Procs, Opts) ->
             ],
     Mons = [M || M <- Mons0, is_pid(M)],
 
-    TraceOpts = ['send', 'receive', 'call', strict_monotonic_timestamp],
+    TraceOpts = ['call', strict_monotonic_timestamp],
     [ erlang:trace(M, true, TraceOpts) || TraceMon, M <- Mons ],
 
     put({type, Init}, init),
@@ -79,21 +79,11 @@ finish(Tracer, Tracees) ->
             Log
     end.
 
--define(IF_OPT(OPT, LOG), case get(OPT) of true -> LOG; _ -> ignore end).
+handle({trace_ts, Who, 'call', 
+        {ddmon, handle_event, [enter, OldState, NewState, _Data]},
+        Time}) ->
+    {Time, Who, {enter, OldState, NewState}};
 
-%% State change
-%% ddmon:handle_event picks an event from its queue/state machine
-handle({trace_ts, Who, 'call',
-        {ddmon, handle_event, [Kind, Msg, _State, _Data]}, Time}) ->
-    Pick = case {Kind, Msg} of
-               {internal, {'receive', {query, ReqId}}} -> {query, ReqId};
-               {internal, {'receive', {response, ReqId}}} -> {reply, ReqId};
-               {cast, {probe, Probe}} -> {probe, Probe};
-               {cast, {notify, From, {query, ReqId}}} -> {query, From, ReqId};
-               {cast, {notify, From, {response, ReqId}}} -> {reply, From, ReqId};
-               _ -> nil
-           end,
-    case Pick of
-        nil -> ignore;
-        _ -> ?IF_OPT(trace_int, {Time, Who, {pick, Pick}})
-    end.
+handle({trace_ts, Who, 'call', 
+        {ddmon, handle_event, [Kind, Msg, State, _Data]}, Time}) ->
+    {Time, Who, {Kind, Msg, State}}.

@@ -72,7 +72,7 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
     {ok, synced, Data, []}.
 
 callback_mode() ->
-    handle_event_function.
+    [handle_event_function, state_enter].
 
 terminate(Reason, _State, Data) ->
     terminate(Reason, Data).
@@ -100,6 +100,10 @@ init_trace(Worker) ->
 %%%======================
 %%% handle_event: All-time interactions
 %%%======================
+
+handle_event(enter, _OldState, _NewState, _Data) ->
+    %% This is only to allow tracer to log state transitions
+    keep_state_and_data;
 
 handle_event(cast, {subscribe, From}, _State, Data = #data{deadlock_subscribers = DLS}) ->
     Data1 = Data#data{deadlock_subscribers = [From | DLS]},
@@ -175,76 +179,63 @@ handle_event(info,
 
 %% Send query
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) ->
-    io:format("~p: trace send query to ~p~n", [self(), To]),
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), _State, Data) ->
-    io:format("~p: trace send response to ~p~n", [self(), To]),
     call_mon_state({unwait, To}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Receive dispatcher: Synced -> wait for monitor notification
 handle_event(internal, ?RECV_INFO(MsgInfo), synced, Data) ->
-    io:format("~p: trace receive of ~p~n", [self(), MsgInfo]),
     {next_state, {wait_mon, MsgInfo}, Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
 handle_event(cast, ?NOTIFY(From, MsgInfo), synced, Data) ->
-    io:format("~p: trace notify from ~p of ~p~n", [self(), From, MsgInfo]),
     {next_state, {wait_proc, From, MsgInfo}, Data};
 
 %% Receive dispatcher: Receive awaited notification
 handle_event(cast, ?NOTIFY(From, MsgInfo), {wait_mon, MsgInfo}, Data) ->
-    io:format("~p: receive awaited notif from ~p of ~p~n", [self(), From, MsgInfo]),
     Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting notification, got irrelevant message
 handle_event(_Kind, _Msg, {wait_mon, _MsgInfo}, _Data) ->
-    io:format("~p: postponed msg ~p~n", [self(), _Msg]),
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
 handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From}, Data) ->
-    io:format("~p: receive awaited message ~p~n", [self(), MsgInfo]),
     Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
     {next_state, handle_recv, Data, Event};
 
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
 handle_event(_Kind, _Msg, {wait_proc, _From}, _Data) ->
-    io:format("~p: postponed msg ~p~n", [self(), _Msg]),
     {keep_state_and_data, postpone};
 
 %% Receive response
 handle_event(internal, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), handle_recv, Data) ->
-    io:format("~p: handle received response from ~p", [self(), _From]),
     call_mon_state(unlock, Data),
     {next_state, synced, Data};
 
 %% Receive query
 handle_event(internal, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), handle_recv, Data) ->
-    io:format("~p: handle received query from ~p~n", [self(), From]),
     call_mon_state({wait, From}, Data),
     {next_state, synced, Data};
 
 %% Postpone while handling recv
 handle_event(internal, _Msg, handle_recv, _Data) ->
-    io:format("~p: postpone while handling recv~n", [self()]),
     {keep_state_and_data, postpone};
 
 %% Receive probe
 handle_event(cast, ?PROBE(Probe), synced, Data) ->
-    io:format("~p: receive probe ~p~n", [self(), Probe]),
     call_mon_state(?PROBE(Probe), Data),
     keep_state_and_data;
 
 %% Postpone probe
 handle_event(cast, ?PROBE(_), _State, _Data) ->
-    io:format("~p: postpone probe~n", [self()]),
     {keep_state_and_data, postpone}.
 
 
@@ -270,11 +261,9 @@ handle_mon_state_response(ok, _Data) ->
     ok;
 handle_mon_state_response(deadlock, Data) ->
     %% Notify subscribers and keep running
-    io:format("~p: DEADLOCK~n", [self()]),
     notify_deadlock_subscribers(Data),
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
-    io:format("~p: sends ~p~n", [self(), Sends]),
     [ gen_statem:cast(ToPid, ?PROBE(Probe))
       || {ToPid, ?PROBE(Probe)} <- Sends
     ],

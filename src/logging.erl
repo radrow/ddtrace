@@ -79,13 +79,15 @@ index(Thing, Type) ->
             Idx
     end.
 
-known(Thing) ->
+known(Thing, Type) ->
     case ets:lookup(?KNOWN, Thing) of
         [{_, Info}] -> Info;
         _ ->
-            Idx = remember(Thing, x),
-            {x, Idx}
+            Idx = remember(Thing, Type),
+            {Type, Idx}
     end.
+known(Thing) ->
+    known(Thing, x).
 
 index(Thing) ->
     {_, Idx} = known(Thing),
@@ -125,7 +127,7 @@ c_mon(Mon, SubId) ->
     [c_mon(Mon), "(", c_thing(SubId), ")"].
 
 c_init(Pid) when is_pid(Pid) ->
-    {[blue, bold, invert], name(Pid)}.
+    {[blue, bold], name(Pid)}.
 
 c_who({global, Term}) ->
     case global:whereis_name(Term) of
@@ -147,13 +149,13 @@ c_query() ->
     {blue_l, "Q"}.
 
 c_query(Msg) ->
-    [c_query(), "(", c_msg(Msg), ")"].
+    [c_query(), "(", c_reqid(Msg), ")"].
 
 c_reply() ->
     {green_l, "R"}.
 
 c_reply(Msg) ->
-    [c_reply(), "(", c_msg(Msg), ")"].
+    [c_reply(), "(", c_reqid(Msg), ")"].
 
 c_probe(Probe) ->
     {yellow, name(Probe, 'P')}.
@@ -188,12 +190,9 @@ c_deadlocks(DLs) ->
 c_timeout() ->
     {[white, bold, underline, invert], "### TIMEOUT ###"}.
 
-c_msg(Msg) when is_tuple(Msg) andalso size(Msg) > 0 ->
-    c_msg(element(1, Msg));
-c_msg(deadlock) ->
-    c_deadlock_msg();
-c_msg(Msg) ->
-    c_thing(Msg).
+c_reqid(ReqId) ->
+    I = index(ReqId, reqid),
+    {[white_l, bold, italic], "i" ++ integer_to_list(I)}.
 
 c_deadlock_msg() ->
     {[red, dim], "D"}.
@@ -210,7 +209,7 @@ print(Span) ->
 
 
 c_by(Who, Span) ->
-    [ c_indent(Who), c_who(Who), ":\t " | Span].
+    [ c_indent(Who), c_who(Who), ": " | Span].
 
 c_indent() ->
     [$\t || _ <- lists:seq(1, get(?LOG_INDENT_SIZE))].
@@ -245,13 +244,6 @@ log_deadlocks(DLs) ->
 log_timeout() ->
     print(c_timeout()).
 
-c_release(Pid) ->
-    [{dim, "release: "}, c_who(Pid)].
-
-c_from({Tag, From, _Msg}) when is_atom(Tag) ->
-    c_who(From);
-c_from({Tag, _Msg}) when is_atom(Tag) ->
-    "".
 
 c_lock_list([]) ->
     "";
@@ -262,46 +254,39 @@ c_lock_list([First|L]) ->
     , ")"
     ].
 
-c_state(unlocked) ->
-    {[green, bold, invert], " UNLOCK "};
-c_state({locked, On}) ->
-    [{[red_l, bold, invert], " LOCK "}, " (", c_probe(On), ")"];
-c_state({deadlocked, foreign}) ->
-    {[red, bold, underline, dim], "foreign deadlock"};
-c_state({deadlocked, DL}) ->
-    [ {[red, bold, underline, invert], "### DEADLOCK ###\t"}
-    , c_lock_list(DL)
-    ].
+c_state(synced) ->
+    {[green, bold, invert], " S "};
+c_state({wait_mon, MsgInfo}) ->
+    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfo), ")"];
+c_state({wait_proc, From, MsgInfo}) ->
+    [{[yellow, bold, invert], " P "}, "(", c_who(From), " @ ", c_msg_info(MsgInfo), ")"];
+c_state(handle_recv) ->
+    [ {[green, bold], " R "} ].
 
-c_ev_data({query, _From, Msg}) ->
-    [c_query(Msg)];
-c_ev_data({query, Msg}) ->
-    c_query(Msg);
-c_ev_data({reply, _From, Msg}) ->
-    [c_reply(Msg)];
-c_ev_data({reply, Msg}) ->
-    c_reply(Msg);
-c_ev_data({proc_query, To, Msg}) ->
-    [c_who(To), " ?! ", c_query(Msg)];
-c_ev_data({proc_reply, Msg}) ->
-    ["?! ", c_reply(Msg)];
-c_ev_data({probe, Probe}) ->
-    c_probe(Probe);
-c_ev_data({release, Pid}) ->
-    c_release(Pid).
+c_msg_info(?QUERY_INFO(ReqId)) ->
+    c_query(ReqId);
+c_msg_info(?RESP_INFO(ReqId)) ->
+    c_reply(ReqId).
 
-c_event({recv, EvData}) ->
-    [c_from(EvData), " ? ", c_ev_data(EvData)];
-c_event({send, To, EvData}) ->
-    [c_who(To), " ! ", c_ev_data(EvData)];
-c_event({pick, Event}) ->
-    ["%[ ", c_ev_data(Event), " ]"];
-c_event({wait, Time}) ->
-    {[italic, dim], io_lib:format("waiting ~pms", [Time])};
-c_event({state, State}) ->
-    ["=> ", c_state(State)];
-c_event({unhandled, T}) ->
-    ["unhandled trace: ", c_thing(T)].
+c_event({Kind, Ev, State}) when Kind =:= internal; Kind =:= cast ->
+    ["[", c_state(State), "]\t",c_event(Ev)];
+c_event({info, Ev, _State}) when element(1, Ev) =:= trace_ts ->
+    "trace";
+c_event(?RECV_INFO(MsgInfo)) ->
+    ["? ", c_msg_info(MsgInfo)];
+c_event(?SEND_INFO(To, MsgInfo)) ->
+    [c_who(To), " ! ", c_msg_info(MsgInfo)];
+c_event(?NOTIFY(From, MsgInfo)) ->
+    [c_who(From), " ? ", c_msg_info(MsgInfo)];
+c_event(?PROBE(Probe)) ->
+    [c_probe(Probe)];
+c_event(?HANDLE_RECV(From, MsgInfo)) ->
+    ["{", c_who(From), " ? ", c_msg_info(MsgInfo), " }"];
+c_event({enter, OldState, NewState}) ->
+    ["[", c_state(OldState), "]\t=> ", c_state(NewState)];
+c_event(T) ->
+    c_thing(T).
+
 
 class_who(E) ->
     case type(E) of
@@ -529,7 +514,7 @@ c_timestamp(InitT, {T, _TimeIdx}) ->
     end.
 
 c_trace(InitT, Time, Who, What) ->
-    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time), "\t"]; _ -> "" end
+    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time)]; _ -> "" end
     , c_by(Who, c_event(What))
     ].
 
