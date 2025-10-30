@@ -29,6 +29,7 @@
 
 -record(data,
     { worker               :: process_name() % the traced worker process
+    , erl_monitor          :: reference()    % the Erlang monitor reference
     , mon_register         :: process_name() % registry of monitors for each worker process
     , mon_state            :: process_name() % the process holding the monitor state
     }).
@@ -58,11 +59,14 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
     
+    ErlMon = erlang:monitor(process, Worker),
+
     mon_reg:set_mon(MonRegister, Worker, self()),
     {ok, MonState} = ddmon_state:start_link(Worker, MonRegister),
 
     init_trace(Worker),
     Data = #data{ worker = Worker
+                , erl_monitor = ErlMon
                 , mon_register = MonRegister
                 , mon_state = MonState
                 },
@@ -74,7 +78,9 @@ callback_mode() ->
 
 terminate(Reason, _State, Data) ->
     terminate(Reason, Data).
-terminate(_Reason, _Data) ->
+terminate(_Reason, Data) ->
+    ErlMon = Data#data.erl_monitor,
+    erlang:demonitor(ErlMon, [flush]),
     ok.
 
 
@@ -106,6 +112,11 @@ handle_event(enter, _OldState, _NewState, _Data) ->
 handle_event({call, From}, subscribe, _State, Data) ->
     cast_mon_state({subscribe, From}, Data),
     keep_state_and_data;
+
+handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
+    %% Worker process died
+    erlang:demonitor(ErlMon, [flush]),
+    {stop, normal, Data};
 
 %%%======================
 %%% handle_event: Deadlock propagation
