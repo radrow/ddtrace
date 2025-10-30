@@ -180,13 +180,13 @@ handle_event(info,
 %%%======================
 
 %% Send query
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), _State, Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), synced, Data) ->
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), _State, Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), synced, Data) ->
     call_mon_state({unwait, To}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;

@@ -16,7 +16,7 @@
     , probe              :: gen_server:request_id() | undefined
     , waitees            :: [process_name()] % callers waiting on us
     , subscribers = []   :: [gen_statem:from()]
-    , deadlocked = false :: boolean()
+    , deadlocked = false :: {deadlocked, [process_name()]} | false
     }).
 
 
@@ -42,20 +42,21 @@ init([Worker, MonRegister]) ->
     {ok, State}.
 
 
-%% Add waitee
-handle_call({wait, Who}, _From, State) ->
-    State1 = State#state{waitees = [Who | State#state.waitees]},
-    Resp = 
-        case State#state.probe of
-            undefined -> ok;
-            Probe ->
-                case mon_reg:mon_of(State#state.mon_register, Who) of
-                    undefined -> ok;
-                    MonPid when is_pid(MonPid) ->
-                        Worker = State#state.worker,
-                        {send, [{MonPid, ?PROBE(Probe, [Worker])}]}
-                end
-        end,
+%% Add waitee (unlocked)
+handle_call({wait, Who}, _From, State = #state{probe = undefined, waitees = Waits}) ->
+    State1 = State#state{waitees = [Who | Waits]},
+    {reply, ok, State1};
+
+%% Add waitee (locked)
+handle_call({wait, Who}, _From, State = #state{probe = Probe, waitees = Waits}) ->
+    State1 = State#state{waitees = [Who | Waits]},
+
+    Resp = case mon_reg:mon_of(State#state.mon_register, Who) of
+               undefined -> ok;
+               MonPid when is_pid(MonPid) ->
+                   Worker = State#state.worker,
+                   {send, [{MonPid, ?PROBE(Probe, [Worker])}]}
+           end,
     {reply, Resp, State1};
 
 %% Remove waitee
@@ -63,10 +64,22 @@ handle_call({unwait, Who}, _From, State) ->
     State1 = State#state{waitees = lists:delete(Who, State#state.waitees)},
     {reply, ok, State1};
 
+%% Lock while already locked --- error
+handle_call({lock, _}, _From, #state{probe = Probe}) when Probe =/= undefined ->
+    throw({badarg, already_locked});
+
 %% Set lock
 handle_call({lock, Probe}, _From, State) ->
     State1 = State#state{probe = Probe},
     {reply, ok, State1};
+
+%% Unlock while not locked --- error
+handle_call(unlock, _From, #state{probe = undefined}) ->
+    throw({badarg, not_locked});
+
+%% Unlock while deadlocked --- error
+handle_call(unlock, _From, #state{deadlocked = {deadlocked, _}}) ->
+    throw({badarg, deadlocked});
 
 %% Unlock
 handle_call(unlock, _From, State) ->
@@ -92,18 +105,20 @@ handle_call(?PROBE(Probe, L), _From, State) ->
     {reply, Resp, State}.
 
 
-handle_cast({subscribe, From}, State = #state{subscribers = DLS}) ->
+%% Deadlock subscription
+handle_cast({subscribe, From}, State = #state{subscribers = DLS, deadlocked = DLed}) ->
     State1 = State#state{subscribers = [From | DLS]},
+    case DLed of {deadlocked, DL} -> gen_statem:reply(From, {deadlock, DL}); false -> ok end,
+    {noreply, State1};
+
+%% Deadlock propagation --- propagate and become deadlocked
+handle_cast(?DEADLOCK_PROP(DL), State = #state{deadlocked = false}) ->
+    State1 = report_deadlock(DL, State),
     {noreply, State1};
 
 %% Deadlock propagation while deadlocked --- ignore
-handle_cast(?DEADLOCK_PROP(_DL), #state{deadlocked = true} = State) ->
+handle_cast(?DEADLOCK_PROP(_DL), State) ->
     {noreply, State};
-
-%% Deadlock propagation --- propagate and become deadlocked
-handle_cast(?DEADLOCK_PROP(DL), State) ->
-    State1 = report_deadlock(DL, State),
-    {noreply, State1};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -127,6 +142,6 @@ report_deadlock(DL, State) ->
     ],
     
     %% Set deadlocked flag
-    State1 = State#state{deadlocked = true},
+    State1 = State#state{deadlocked = {deadlocked, DL}},
     
     State1.
