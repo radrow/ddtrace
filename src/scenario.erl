@@ -3,7 +3,7 @@
 -export([grid_printer/2]).
 -export([run/1, run/2]).
 
--include("ddmon.hrl").
+-include("ddtrace.hrl").
 
 
 %% Turns a session description into something evaluable:
@@ -105,7 +105,7 @@ run_scenario(Scenario, Opts) ->
     
     {ok, Supervisor} = scenario_supervisor:start_link(),
 
-    GsModule = 'Elixir.Ddmon.TestServer',
+    GsModule = 'Elixir.Ddtrace.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
 
     {ok, MonReg} = mon_reg:start_link(),
@@ -129,7 +129,7 @@ run_scenario(Scenario, Opts) ->
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  {ok, M} = ddmon:start_link(P, MonReg),
+                  {ok, M} = ddtrace:start_link(P, MonReg),
 
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -192,7 +192,7 @@ run_scenario(Scenario, Opts) ->
                                  I
                          end,
                      R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
-                     RD = ddmon:subscribe_deadlocks(mon_reg:mon_of(MonReg, SessionInitProc)),
+                     RD = ddtrace:subscribe_deadlocks(mon_reg:mon_of(MonReg, SessionInitProc)),
                      
                      ReqIds1 = gen_server:reqids_add(R, SessionId, ReqIds),
                      gen_server:reqids_add(RD, SessionId, ReqIds1)

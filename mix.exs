@@ -1,17 +1,17 @@
-defmodule Ddmon do
+defmodule DDTrace do
   use Mix.Project
 
   def project do
     [
-      app: :ddmon,
+      app: :ddtrace,
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       compilers: [:erlang] ++ Mix.compilers(),
       deps: [],
       escript: [
-        main_module: Ddmon.Main,
-        emu_args: "-sname ddmon +P 10485760"
+        main_module: DDTrace.Main,
+        emu_args: "-sname ddtrace +P 10485760"
       ]
     ]
   end

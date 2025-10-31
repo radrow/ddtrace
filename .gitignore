@@ -7,7 +7,7 @@ erl_crash.dump
 rebar.lock
 
 output
-ddmon
+ddtrace
 
 # rebar 2.x
 .rebar

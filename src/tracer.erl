@@ -1,6 +1,6 @@
  -module(tracer).
 
- -include("ddmon.hrl").
+ -include("ddtrace.hrl").
 
  -export([ start_link/1, start_link/2
          , finish/1, finish/2
@@ -20,7 +20,7 @@ start_link(Procs, Opts) ->
 run_tracer(Init, Procs, Opts) ->
     config_tracer(Opts),
 
-    %% By default, trace only monitors (ddmon statem), not workers or ddmon_monitor
+    %% By default, trace only monitors (ddtrace statem), not workers or ddtrace_monitor
     TraceMon = proplists:get_value(trace_mon, Opts, true),
     put(trace_int, proplists:get_value(trace_int, Opts, true)),
     put(live_log, proplists:get_value(live_log, Opts, false)),
@@ -46,7 +46,7 @@ config_tracer(Opts) ->
         logging:conf(Opts),
 
         erlang:trace_pattern(
-            {ddmon, handle_event, 4},
+            {ddtrace, handle_event, 4},
             [ {['_', '_', '_', '_'], [], [trace]} ],
             [local]
          ),
@@ -80,10 +80,10 @@ finish(Tracer, Tracees) ->
     end.
 
 handle({trace_ts, Who, 'call', 
-        {ddmon, handle_event, [enter, OldState, NewState, _Data]},
+        {ddtrace, handle_event, [enter, OldState, NewState, _Data]},
         Time}) ->
     {Time, Who, {enter, OldState, NewState}};
 
 handle({trace_ts, Who, 'call', 
-        {ddmon, handle_event, [Kind, Msg, State, _Data]}, Time}) ->
+        {ddtrace, handle_event, [Kind, Msg, State, _Data]}, Time}) ->
     {Time, Who, {Kind, Msg, State}}.

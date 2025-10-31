@@ -14,4 +14,4 @@
 -define(GS_RESP_ALIAS(ReqId), {[alias|ReqId], _Msg}).
 -define(GS_RESP(ReqId), {ReqId, _Msg}).
 
--define(DEADLOCK_PROP(DL), {'$ddmon_deadlock_prop', DL}).
+-define(DEADLOCK_PROP(DL), {'$ddtrace_deadlock_prop', DL}).

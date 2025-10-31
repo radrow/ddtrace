@@ -1,7 +1,7 @@
--module(ddmon_state).
+-module(ddtrace_state).
 -behaviour(gen_server).
 
--include("ddmon.hrl").
+-include("ddtrace.hrl").
 -export([start_link/2, stop/1, init/1, handle_call/3, handle_cast/2]).
 
 -type process_name() ::

@@ -1,7 +1,7 @@
--module(ddmon).
+-module(ddtrace).
 -behaviour(gen_statem).
 
--include("ddmon.hrl").
+-include("ddtrace.hrl").
 
 %% API
 -export([ start/2, start/3, start/4
@@ -14,11 +14,11 @@
 
 -export([handle_event/4]).
 
-%% DDMon API
+%% DDTrace API
 -export([subscribe_deadlocks/1]).
 
 %%%======================
-%%% DDMon Types
+%%% Types
 %%%======================
 
 -type process_name() ::
@@ -62,7 +62,7 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
     ErlMon = erlang:monitor(process, Worker),
 
     mon_reg:set_mon(MonRegister, Worker, self()),
-    {ok, MonState} = ddmon_state:start_link(Worker, MonRegister),
+    {ok, MonState} = ddtrace_state:start_link(Worker, MonRegister),
 
     init_trace(Worker),
     Data = #data{ worker = Worker
@@ -105,16 +105,16 @@ init_trace(Worker) ->
 %%% handle_event: All-time interactions
 %%%======================
 
+%% This is only to allow tracer to log state transitions
 handle_event(enter, _OldState, _NewState, _Data) ->
-    %% This is only to allow tracer to log state transitions
     keep_state_and_data;
 
 handle_event({call, From}, subscribe, _State, Data) ->
     cast_mon_state({subscribe, From}, Data),
     keep_state_and_data;
 
+%% Worker process died
 handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
-    %% Worker process died
     erlang:demonitor(ErlMon, [flush]),
     {stop, normal, Data};
 

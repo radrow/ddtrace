@@ -1,4 +1,4 @@
-defmodule Ddmon.TestServer do
+defmodule DDTrace.TestServer do
   use GenServer
 
   def start_link(id, kind, opts) do

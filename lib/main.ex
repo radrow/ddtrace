@@ -1,4 +1,4 @@
-defmodule Ddmon.Main do
+defmodule DDTrace.Main do
   defp usage() do
     """
     Usage: #{Path.basename(__ENV__.file)} FILE [OPTIONS]
