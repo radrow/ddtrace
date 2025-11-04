@@ -102,10 +102,10 @@ scenario_time(Scenario) ->
 %% Prepares and evaluates a scenario
 run_scenario(Scenario, Opts) ->
     Init = self(),
-    
+
     {ok, Supervisor} = scenario_supervisor:start_link(),
 
-    GsModule = 'Elixir.Ddtrace.TestServer',
+    GsModule = 'Elixir.DDTrace.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
 
     {ok, MonReg} = mon_reg:start_link(),

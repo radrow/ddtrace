@@ -243,13 +243,9 @@ handle_event(internal, _Msg, handle_recv, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive probe
-handle_event(cast, ?PROBE(Probe, L), synced, Data) ->
+handle_event(cast, ?PROBE(Probe, L), _State, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
-    keep_state_and_data;
-
-%% Postpone probe
-handle_event(cast, ?PROBE(_, _), _State, _Data) ->
-    {keep_state_and_data, postpone}.
+    keep_state_and_data.
 
 %%%======================
 %%% Monitor user API
