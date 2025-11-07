@@ -282,6 +282,8 @@ cast_mon_state(Msg, #data{mon_state = Pid}) ->
 handle_mon_state_response(ok, _Data) ->
     ok;
 handle_mon_state_response(deadlock, _Data) ->
+    %% Worker = Data#data.worker,
+    %% exit(Worker, shutdown),
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
     [ gen_statem:cast(ToPid, ?PROBE(Probe, L))

@@ -75,11 +75,11 @@ handle_call({lock, Probe}, _From, State) ->
 
 %% Unlock while not locked --- error
 handle_call(unlock, _From, #state{probe = undefined}) ->
-    throw({badarg, not_locked});
+    throw({badarg, unlock_not_locked});
 
 %% Unlock while deadlocked --- error
 handle_call(unlock, _From, #state{deadlocked = {deadlocked, _}}) ->
-    throw({badarg, deadlocked});
+    throw({badarg, unlock_deadlocked});
 
 %% Unlock
 handle_call(unlock, _From, State) ->
