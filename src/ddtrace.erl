@@ -191,13 +191,19 @@ handle_event(info,
 %%%======================
 
 %% Send query
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), synced, Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), State, Data)
+  when State =:= synced;
+       element(1, State) =:= wait_proc
+       ->
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), synced, Data) ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), State, Data)
+  when State =:= synced;
+       element(1, State) =:= wait_proc
+       ->
     call_mon_state({unwait, To}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
@@ -243,9 +249,15 @@ handle_event(internal, _Msg, handle_recv, _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive probe
-handle_event(cast, ?PROBE(Probe, L), _State, Data) ->
+handle_event(cast, ?PROBE(Probe, L), synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
-    keep_state_and_data.
+    keep_state_and_data;
+handle_event(cast, ?PROBE(Probe, L), {wait_mon, _}, Data) ->
+    call_mon_state(?PROBE(Probe, L), Data),
+    keep_state_and_data;
+
+handle_event(_Kind, _Msg, _State, _Data) ->
+    {keep_state_and_data, postpone}.
 
 %%%======================
 %%% Monitor user API
