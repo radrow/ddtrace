@@ -242,7 +242,12 @@ c_state({wait_mon, MsgInfo}) ->
 c_state({wait_proc, From, MsgInfo}) ->
     [{[yellow, bold, invert], " P "}, "(", c_who(From), " @ ", c_msg_info(MsgInfo), ")"];
 c_state(handle_recv) ->
-    [ {[green, bold], " R "} ].
+    [ {[green, bold], " R "} ];
+
+c_state(?synced) -> c_state(synced);
+c_state(?wait_proc(From, MsgInfo, _Rest)) -> c_state({wait_proc, From, MsgInfo});
+c_state(?wait_mon(MsgInfo, _Rest)) -> c_state({wait_mon, MsgInfo}). 
+
 
 c_msg_info(?QUERY_INFO(ReqId)) ->
     c_query(ReqId);

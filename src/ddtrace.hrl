@@ -15,3 +15,11 @@
 -define(GS_RESP(ReqId), {ReqId, _Msg}).
 
 -define(DEADLOCK_PROP(DL), {'$ddtrace_deadlock_prop', DL}).
+
+%% Internal states
+-define(synced, {wait, []}).
+-define(wait(L), {wait, L}).
+-define(wait_proc_obj(From, MsgInfo), {proc, From, MsgInfo}).
+-define(wait_proc(From, MsgInfo, Rest), ?wait([?wait_proc_obj(From, MsgInfo) | Rest])).
+-define(wait_mon_obj(MsgInfo), {mon, MsgInfo}).
+-define(wait_mon(MsgInfo, Rest), ?wait([?wait_mon_obj(MsgInfo) | Rest])).

@@ -34,6 +34,7 @@
     , mon_state            :: process_name() % the process holding the monitor state
     }).
 
+
 %%%======================
 %%% API Functions
 %%%======================
@@ -71,7 +72,7 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
                 , mon_state = MonState
                 },
 
-    {ok, synced, Data, []}.
+    {ok, ?synced, Data, []}.
 
 callback_mode() ->
     [handle_event_function, state_enter].
@@ -191,68 +192,60 @@ handle_event(info,
 %%%======================
 
 %% Send query
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), State, Data)
-  when State =:= synced;
-       element(1, State) =:= wait_proc
-       ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?synced, Data) ->
+    call_mon_state({lock, ReqId}, Data),
+    send_notif(To, MsgInfo, Data),
+    keep_state_and_data;
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?wait_proc(_, _, _), Data) ->
     call_mon_state({lock, ReqId}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), State, Data)
-  when State =:= synced;
-       element(1, State) =:= wait_proc
-       ->
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?synced, Data) ->
+    call_mon_state({unwait, To}, Data),
+    send_notif(To, MsgInfo, Data),
+    keep_state_and_data;
+handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?wait_proc(_, _, _), Data) ->
     call_mon_state({unwait, To}, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, ?RECV_INFO(MsgInfo), synced, Data) ->
-    {next_state, {wait_mon, MsgInfo}, Data};
+handle_event(internal, ?RECV_INFO(MsgInfo), ?synced, Data) ->
+    {next_state, ?wait_mon(MsgInfo, []), Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
-handle_event(cast, ?NOTIFY(From, MsgInfo), synced, Data) ->
-    {next_state, {wait_proc, From, MsgInfo}, Data};
+handle_event(cast, ?NOTIFY(From, MsgInfo), ?synced, Data) ->
+    {next_state, ?wait_proc(From, MsgInfo, []), Data};
 
 %% Receive dispatcher: Receive awaited notification
-handle_event(cast, ?NOTIFY(From, MsgInfo), {wait_mon, MsgInfo}, Data) ->
-    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
-    {next_state, handle_recv, Data, Event};
+handle_event(cast, ?NOTIFY(From, MsgInfo), ?wait_mon(MsgInfo, Rest), Data0) ->
+    Data1 = handle_recv(From, MsgInfo, Data0),
+    {next_state, ?wait(Rest), Data1};
 
 %% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(_Kind, _Msg, {wait_mon, _MsgInfo}, _Data) ->
+handle_event(_Kind, _Msg, ?wait_mon(_MsgInfo, _Rest), _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, ?RECV_INFO(MsgInfo), {wait_proc, From, MsgInfo}, Data) ->
-    Event = {next_event, internal, ?HANDLE_RECV(From, MsgInfo)},
-    {next_state, handle_recv, Data, Event};
+handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo, Rest), Data0) ->
+    Data1 = handle_recv(From, MsgInfo, Data0),
+    {next_state, ?wait(Rest), Data1};
 
+%% Receive dispatcher: Receive unwanted process trace
+handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfoOther, Rest), Data) ->
+    {next_state, ?wait_proc(From, MsgInfo, Rest ++ [?wait_mon_obj(MsgInfoOther)]), Data};
+    
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
-handle_event(_Kind, _Msg, {wait_proc, _From}, _Data) ->
-    {keep_state_and_data, postpone};
-
-%% Receive response
-handle_event(internal, ?HANDLE_RECV(_From, ?RESP_INFO(_ReqId)), handle_recv, Data) ->
-    call_mon_state(unlock, Data),
-    {next_state, synced, Data};
-
-%% Receive query
-handle_event(internal, ?HANDLE_RECV(From, ?QUERY_INFO(_ReqId)), handle_recv, Data) ->
-    call_mon_state({wait, From}, Data),
-    {next_state, synced, Data};
-
-%% Postpone while handling recv
-handle_event(internal, _Msg, handle_recv, _Data) ->
+handle_event(_Kind, _Msg, ?wait_proc(_From, _MsgInfo, _Rest), _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive probe
-handle_event(cast, ?PROBE(Probe, L), synced, Data) ->
+handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
-handle_event(cast, ?PROBE(Probe, L), {wait_mon, _}, Data) ->
+handle_event(cast, ?PROBE(Probe, L), ?wait_mon(_, _), Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
@@ -271,6 +264,13 @@ subscribe_deadlocks(Mon) ->
 %%% Internal Helper Functions
 %%%======================
 
+%% Receive query
+handle_recv(From, ?QUERY_INFO(_ReqId), Data) ->
+    call_mon_state({wait, From}, Data);
+handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
+    call_mon_state(unlock, Data).
+
+
 send_notif(To, MsgInfo, Data) ->
     Mon = mon_of(Data, To),
     case Mon of
@@ -284,7 +284,8 @@ send_notif(To, MsgInfo, Data) ->
 
 call_mon_state(Msg, Data = #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
-    handle_mon_state_response(Resp, Data).
+    handle_mon_state_response(Resp, Data),
+    Data.
 
 
 cast_mon_state(Msg, #data{mon_state = Pid}) ->
