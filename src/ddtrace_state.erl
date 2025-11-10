@@ -37,19 +37,27 @@ init([Worker, MonRegister]) ->
         worker = Worker,
         mon_register = MonRegister,
         probe = undefined,
-        waitees = []
+        waitees = #{}
     },
     {ok, State}.
 
-
 %% Add waitee (unlocked)
-handle_call({wait, Who}, _From, State = #state{probe = undefined, waitees = Waits}) ->
-    State1 = State#state{waitees = [Who | Waits]},
+handle_call({wait, Who, ReqId}, _From, State = #state{probe = undefined, waitees = Waits}) ->
+    case maps:find(ReqId, Waits) of
+        {ok, _} -> error({already_waiting, Who});
+        error -> ok
+    end,
+    State1 = State#state{waitees = Waits#{ReqId => Who, Who => Who}},
+
     {reply, ok, State1};
 
 %% Add waitee (locked)
-handle_call({wait, Who}, _From, State = #state{probe = Probe, waitees = Waits}) ->
-    State1 = State#state{waitees = [Who | Waits]},
+handle_call({wait, Who, ReqId}, _From, State = #state{probe = Probe, waitees = Waits}) ->
+    case maps:find(ReqId, Waits) of
+        {ok, _} -> error({already_waiting, Who});
+        error -> ok
+    end,
+    State1 = State#state{waitees = Waits#{ReqId => Who, Who => Who}},
 
     Resp = case mon_reg:mon_of(State#state.mon_register, Who) of
                undefined -> ok;
@@ -57,11 +65,16 @@ handle_call({wait, Who}, _From, State = #state{probe = Probe, waitees = Waits}) 
                    Worker = State#state.worker,
                    {send, [{MonPid, ?PROBE(Probe, [Worker])}]}
            end,
+
     {reply, Resp, State1};
 
 %% Remove waitee
-handle_call({unwait, Who}, _From, State) ->
-    State1 = State#state{waitees = lists:delete(Who, State#state.waitees)},
+handle_call({unwait, WhoId}, _From, State = #state{waitees = Waits}) ->
+    case maps:find(WhoId, Waits) of
+        error -> error({not_waiting, WhoId});
+        {ok, _} -> ok
+    end,
+    State1 = State#state{waitees = maps:remove(WhoId, Waits)},
     {reply, ok, State1};
 
 %% Lock while already locked --- error
@@ -99,7 +112,8 @@ handle_call(?PROBE(Probe, DL), _From, State = #state{probe = Probe}) ->
 %% Foreign probe --- propagate
 handle_call(?PROBE(Probe, L), _From, State) ->
     Worker = State#state.worker,
-    Mons = [ mon_reg:mon_of(State#state.mon_register, Who) || Who <- State#state.waitees ],
+    Waits = State#state.waitees,
+    Mons = [ mon_reg:mon_of(State#state.mon_register, Who) || {_, Who} <- maps:to_list(Waits) ],
     Sends = [ {Mon, ?PROBE(Probe, [Worker|L])} || Mon <- Mons ],
     Resp = case Sends of [] -> ok; _ -> {send, Sends} end,
     {reply, Resp, State}.
@@ -138,7 +152,7 @@ report_deadlock(DL, State) ->
           Mon = mon_reg:mon_of(State#state.mon_register, Pid),
           gen_statem:cast(Mon, ?DEADLOCK_PROP(DL))
       end
-      || Pid <- State#state.waitees
+      || {_, Pid} <- maps:to_list(State#state.waitees)
     ],
 
     %% Notify subscribers

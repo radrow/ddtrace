@@ -133,7 +133,7 @@ handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
 
 %% Send query
 handle_event(info,
-             {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
+             _Trace = {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
@@ -141,7 +141,7 @@ handle_event(info,
 
 %% Send response (alias-based)
 handle_event(info,
-             {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS(ReqId), To, _Ts},
+             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
@@ -149,7 +149,7 @@ handle_event(info,
 
 %% Send response (plain ReqId)
 handle_event(info,
-             {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
+             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
@@ -157,7 +157,7 @@ handle_event(info,
 
 %% Receive query
 handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
+             _Trace = {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
              _State,
              Data) ->
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
@@ -265,8 +265,10 @@ subscribe_deadlocks(Mon) ->
 %%%======================
 
 %% Receive query
-handle_recv(From, ?QUERY_INFO(_ReqId), Data) ->
-    call_mon_state({wait, From}, Data);
+handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
+    call_mon_state({wait, From, ReqId}, Data);
+handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
+    call_mon_state({wait, From, ReqId}, Data);
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     call_mon_state(unlock, Data).
 
