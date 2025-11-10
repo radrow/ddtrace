@@ -266,7 +266,6 @@ subscribe_deadlocks(Mon) ->
 unsubscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, unsubscribe).
 
-
 %%%======================
 %%% Internal Helper Functions
 %%%======================
