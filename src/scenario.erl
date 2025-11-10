@@ -191,15 +191,16 @@ run_scenario(Scenario, Opts) ->
                                  timer:sleep(T),
                                  I
                          end,
-                     R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
                      RD = ddtrace:subscribe_deadlocks(mon_reg:mon_of(MonReg, SessionInitProc)),
+                     R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
                      
-                     ReqIds1 = gen_server:reqids_add(R, SessionId, ReqIds),
-                     gen_server:reqids_add(RD, SessionId, ReqIds1)
+                     ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, RD}, ReqIds),
+                     gen_server:reqids_add(RD, {deadlock, SessionId, R}, ReqIds1)
              end,
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
-    Result = receive_responses(Reqs, gen_server:reqids_size(Reqs) div 2, Timeout),
+    InitIdSet = [SessionId || {SessionId, _} <- FScenario],
+    Result = receive_responses(Reqs, InitIdSet, Timeout),
     timer:sleep(500),
     
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
@@ -243,26 +244,39 @@ run_scenario(Scenario, Opts) ->
 
 %% Wait for all sessions to terminate, or timeout
 receive_responses(Reqs0, Remaining, Time) ->
-    receive_responses(Reqs0, Remaining, Time, []).
-receive_responses(_Reqs, 0, _, Deadlocks) ->
+    {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time * 5, []),
+    Result.
+receive_responses(Reqs, [], _, Deadlocks) ->
     case Deadlocks of
-        [] -> ok;
-        _ -> {deadlock, Deadlocks}
+        [] -> {ok, Reqs};
+        _ -> {{deadlock, Deadlocks}, Reqs}
     end;
 receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
-    case gen_server:receive_response(Reqs0, Time, true) of
+    case gen_server:wait_response(Reqs0, Time, true) of
         no_request when Deadlocks =:= [] ->
-            ok;
+            {ok, Reqs0};
         no_request ->
-            {deadlock, Deadlocks};
+            {{deadlock, Deadlocks}, Reqs0};
         timeout ->
-            timeout;
-        {{reply, R}, _Session, Reqs1} ->
-            Deadlocks1 = case R of
-                            {deadlock, DL} -> [DL | Deadlocks];
-                            _ -> Deadlocks 
-                        end,
-            receive_responses(Reqs1, Remaining-1, Time, Deadlocks1)
+            {timeout, Reqs0};
+        {{reply, _R}, {reply, SessionId, _ReqDead}, Reqs1} ->
+            io:format("REPLY ~p\t~p\n", [SessionId, _R]),
+            Remaining1 = reduce_remaining(Remaining, SessionId),
+            receive_responses(Reqs1, Remaining1, Time, Deadlocks);
+        {{reply, {deadlock, DL}}, {deadlock, SessionId, _ReqReply}, Reqs1} ->
+            io:format("DEADL ~p\n", [SessionId]),
+            Remaining1 = reduce_remaining(Remaining, SessionId),
+            receive_responses(Reqs1, Remaining1, Time, [DL | Deadlocks])
+    end.
+
+reduce_remaining(Remaining, SessionId) ->
+    case lists:member(SessionId, Remaining) of
+        true -> Remaining -- [SessionId];
+        false -> 
+            io:format("\n\n\n###################################\nDuplicate removal of session ~p from remaining list~n", [SessionId]),
+            Remaining
+                
+            %% error({duplicate_remove, SessionId})
     end.
 
 %% Parse scenario together with in-file options
@@ -506,6 +520,7 @@ get_results(Current, Queue, CurrSize, Max, Printer, Acc) ->
                 {'DOWN', _, process, W, E} when E =/= normal ->
                     [Size] = [S || {Ww, S} <- Current, Ww =:= W],
                     Printer ! {update, W, -Size, down},
+                    io:format(standard_error, "Worker ~p crashed: ~p\n", [W, E]),
                     %% erlang:garbage_collect(W, [{type, minor}]),
                     get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, Acc);
                 {success, _Ref, W, Type, Size, Stats, Res} ->
@@ -543,9 +558,10 @@ run_many(Bench, Opts) ->
                                              [{csv, Path}]
                                      end,
                         Printer ! {update, self(), 0, busy},
+                        io:format("~p\n\n", [Scenario]),
                         {Log, Result} = run_scenario(Scenario, SOpts),
                         Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; timeout -> time end},
-                        Stats = logging:log_stats(Log),
+                        Stats = [], %% Stats = logging:log_stats(Log),
                         logging:delete(),
                         Self ! {success, Ref, self(), Type, Size, Stats, Result}
                 end),

@@ -123,7 +123,7 @@ handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
 %%% handle_event: Deadlock propagation
 %%%======================
 
-handle_event(cast, ?DEADLOCK_PROP(DL), synced, Data) ->
+handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
     cast_mon_state(?DEADLOCK_PROP(DL), Data),
     keep_state_and_data;
 

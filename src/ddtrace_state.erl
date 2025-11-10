@@ -105,11 +105,18 @@ handle_call(?PROBE(Probe, L), _From, State) ->
     {reply, Resp, State}.
 
 
-%% Deadlock subscription
-handle_cast({subscribe, From}, State = #state{subscribers = DLS, deadlocked = DLed}) ->
-    State1 = State#state{subscribers = [From | DLS]},
-    case DLed of {deadlocked, DL} -> gen_statem:reply(From, {deadlock, DL}); false -> ok end,
-    {noreply, State1};
+%% Deadlock subscription while deadlocked --- reply immediately
+handle_cast({subscribe, From}, State = #state{deadlocked = {deadlock, DL}}) ->
+    gen_statem:reply(From, {deadlock, DL}),
+    {noreply, State};
+
+%% Deadlock subscription --- add subscriber
+handle_cast({subscribe, From}, State = #state{deadlocked = false}) ->
+    {noreply, State #state{subscribers = [From | State#state.subscribers]}};
+
+%% Deadlock propagation --- not even locked 
+handle_cast(?DEADLOCK_PROP(DL), #state{probe = undefined}) ->
+    error({deadlock_not_locked, DL});
 
 %% Deadlock propagation --- propagate and become deadlocked
 handle_cast(?DEADLOCK_PROP(DL), State = #state{deadlocked = false}) ->
@@ -141,7 +148,10 @@ report_deadlock(DL, State) ->
      || From <- State#state.subscribers
     ],
     
-    %% Set deadlocked flag
-    State1 = State#state{deadlocked = {deadlocked, DL}},
+    %% Set deadlocked flag. Clear subscribers (so they are notified only once).
+    State1 = State#state{
+               deadlocked = {deadlocked, DL},          
+               subscribers = []
+              },
     
     State1.
