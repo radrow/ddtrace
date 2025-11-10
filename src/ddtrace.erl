@@ -15,7 +15,7 @@
 -export([handle_event/4]).
 
 %% DDTrace API
--export([subscribe_deadlocks/1]).
+-export([subscribe_deadlocks/1, unsubscribe_deadlocks/1]).
 
 %%%======================
 %%% Types
@@ -114,6 +114,10 @@ handle_event({call, From}, subscribe, _State, Data) ->
     cast_mon_state({subscribe, From}, Data),
     keep_state_and_data;
 
+handle_event({call, From}, unsubscribe, _State, Data) ->
+    cast_mon_state({unsubscribe, From}, Data),
+    keep_state_and_data;
+
 %% Worker process died
 handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
     erlang:demonitor(ErlMon, [flush]),
@@ -124,7 +128,7 @@ handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
 %%%======================
 
 handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
-    cast_mon_state(?DEADLOCK_PROP(DL), Data),
+    call_mon_state(?DEADLOCK_PROP(DL), Data),
     keep_state_and_data;
 
 %%%======================
@@ -259,6 +263,9 @@ handle_event(_Kind, _Msg, _State, _Data) ->
 subscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, subscribe).
 
+unsubscribe_deadlocks(Mon) ->
+    gen_statem:send_request(Mon, unsubscribe).
+
 
 %%%======================
 %%% Internal Helper Functions
@@ -296,13 +303,9 @@ cast_mon_state(Msg, #data{mon_state = Pid}) ->
 
 handle_mon_state_response(ok, _Data) ->
     ok;
-handle_mon_state_response(deadlock, _Data) ->
-    %% Worker = Data#data.worker,
-    %% exit(Worker, shutdown),
-    ok;
 handle_mon_state_response({send, Sends}, _Data) ->
-    [ gen_statem:cast(ToPid, ?PROBE(Probe, L))
-      || {ToPid, ?PROBE(Probe, L)} <- Sends
+    [ gen_statem:cast(ToPid, Msg)
+      || {ToPid, Msg} <- Sends
     ],
     ok.
 

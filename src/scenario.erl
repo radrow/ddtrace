@@ -191,10 +191,11 @@ run_scenario(Scenario, Opts) ->
                                  timer:sleep(T),
                                  I
                          end,
-                     RD = ddtrace:subscribe_deadlocks(mon_reg:mon_of(MonReg, SessionInitProc)),
+                     Mon = mon_reg:mon_of(MonReg, SessionInitProc),
+                     RD = ddtrace:subscribe_deadlocks(Mon),
                      R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
                      
-                     ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, RD}, ReqIds),
+                     ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, SessionInitProc, Mon, RD}, ReqIds),
                      gen_server:reqids_add(RD, {deadlock, SessionId, R}, ReqIds1)
              end,
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
@@ -245,6 +246,7 @@ run_scenario(Scenario, Opts) ->
 %% Wait for all sessions to terminate, or timeout
 receive_responses(Reqs0, Remaining, Time) ->
     {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time * 5, []),
+    gen_server:wait_response(_Reqs1, 2000, true),
     Result.
 receive_responses(Reqs, [], _, Deadlocks) ->
     case Deadlocks of
@@ -259,21 +261,20 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
             {{deadlock, Deadlocks}, Reqs0};
         timeout ->
             {timeout, Reqs0};
-        {{reply, _R}, {reply, SessionId, _ReqDead}, Reqs1} ->
-            io:format("REPLY ~p\t~p\n", [SessionId, _R]),
-            Remaining1 = reduce_remaining(Remaining, SessionId),
+        {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1} ->
+            ddtrace:unsubscribe_deadlocks(M),
+            Remaining1 = reduce_remaining(Remaining, SessionId, reply),
             receive_responses(Reqs1, Remaining1, Time, Deadlocks);
         {{reply, {deadlock, DL}}, {deadlock, SessionId, _ReqReply}, Reqs1} ->
-            io:format("DEADL ~p\n", [SessionId]),
-            Remaining1 = reduce_remaining(Remaining, SessionId),
+            Remaining1 = reduce_remaining(Remaining, SessionId, deadlock),
             receive_responses(Reqs1, Remaining1, Time, [DL | Deadlocks])
     end.
 
-reduce_remaining(Remaining, SessionId) ->
+reduce_remaining(Remaining, SessionId, Mode) ->
     case lists:member(SessionId, Remaining) of
         true -> Remaining -- [SessionId];
         false -> 
-            io:format("\n\n\n###################################\nDuplicate removal of session ~p from remaining list~n", [SessionId]),
+            io:format("\n\n\n###################################\nDuplicate removal of session ~p from remaining list [~p]~n", [SessionId, Mode]),
             Remaining
                 
             %% error({duplicate_remove, SessionId})
