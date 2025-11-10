@@ -273,11 +273,10 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
 reduce_remaining(Remaining, SessionId, Mode) ->
     case lists:member(SessionId, Remaining) of
         true -> Remaining -- [SessionId];
-        false -> 
-            io:format("\n\n\n###################################\nDuplicate removal of session ~p from remaining list [~p]~n", [SessionId, Mode]),
+        false when Mode =:= reply ->
+            error({duplicated_reply, SessionId});
+        _ ->
             Remaining
-                
-            %% error({duplicate_remove, SessionId})
     end.
 
 %% Parse scenario together with in-file options
