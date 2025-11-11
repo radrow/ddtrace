@@ -195,25 +195,15 @@ handle_event(info,
 %%% handle_event: Events
 %%%======================
 
-%% Send query
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?synced, Data) ->
-    state_lock(ReqId, Data),
+%% Send
+handle_event(internal, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
+    Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
-    keep_state_and_data;
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?wait_proc(_, _, _), Data) ->
-    state_lock(ReqId, Data),
+    {keep_state, Data1};
+handle_event(internal, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _, _), Data) ->
+    Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
-    keep_state_and_data;
-
-%% Send response
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?synced, Data) ->
-    state_unwait(To, Data),
-    send_notif(To, MsgInfo, Data),
-    keep_state_and_data;
-handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?wait_proc(_, _, _), Data) ->
-    state_unwait(To, Data),
-    send_notif(To, MsgInfo, Data),
-    keep_state_and_data;
+    {keep_state, Data1};
 
 %% Receive dispatcher: Synced -> wait for monitor notification
 handle_event(internal, ?RECV_INFO(MsgInfo), ?synced, Data) ->
@@ -275,8 +265,14 @@ handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
     state_wait(From, ReqId, Data);
 handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
     state_wait(From, ReqId, Data);
+%% Receive response
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     state_unlock(Data).
+
+handle_send(_To, ?QUERY_INFO(ReqId), Data) ->
+    state_lock(ReqId, Data);
+handle_send(To, ?RESP_INFO(_ReqId), Data) ->
+    state_unwait(To, Data).
 
 state_wait(Who, ReqId, Data) ->
     call_mon_state({wait, Who, ReqId}, Data).

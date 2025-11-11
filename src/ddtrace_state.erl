@@ -161,7 +161,12 @@ get_waitee(Who, #state{waitees = Waits}) when is_pid(Who) ->
         _ -> undefined
     end.
 
-add_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when is_pid(Who) ->
+add_waitee(Who, ReqId, State) ->
+    case mon_reg:mon_of(State#state.mon_register, Who) of
+        undefined -> State;
+        _ -> add_monitored_waitee(Who, ReqId, State)
+    end.
+add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when is_pid(Who) ->
     case get_waitee(Who, State) of
         {ok, _} -> error({already_waiting, Who});
         _ -> ok
@@ -171,7 +176,12 @@ add_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when
       reqid_map = ReqMap#{ReqId=>Who}
      }.
 
-remove_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
+remove_waitee(Who, State) ->
+    case mon_reg:mon_of(State#state.mon_register, Who) of
+        undefined -> State;
+        _ -> remove_monitored_waitee(Who, State)
+    end.
+remove_monitored_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
     case get_waitee(Who, State) of
         undefined -> error({not_waiting, Who});
         {ok, WhoPid} ->
