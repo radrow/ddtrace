@@ -21,7 +21,9 @@
     }).
 
 
+%%%======================
 %% API
+%%%======================
 
 start_link(Worker, MonRegister) ->
     gen_server:start_link(?MODULE, [Worker, MonRegister], []).
@@ -31,7 +33,9 @@ stop(Pid) ->
     gen_server:call(Pid, stop).
 
 
+%%%======================
 %% gen_server callbacks
+%%%======================
 
 init([Worker, MonRegister]) ->
     State = #state{
@@ -69,8 +73,8 @@ handle_call({wait, Who, ReqId}, _From, State = #state{probe = Probe}) ->
     {reply, Resp, State1};
 
 %% Remove waitee while deadlocked --- error
-handle_call({unwait, _}, _From, #state{deadlocked = {true, _}}) ->
-    error(unwait_deadlocked);
+handle_call({unwait, _}, _From, #state{deadlocked = {true, DL}}) ->
+    error({unwait_deadlocked, DL});
 
 %% Remove waitee
 handle_call({unwait, WhoId}, _From, State) ->
@@ -91,8 +95,8 @@ handle_call(unlock, _From, #state{probe = undefined}) ->
     error(unlock_not_locked);
 
 %% Unlock while deadlocked --- error
-handle_call(unlock, _From, #state{deadlocked = {true, _}}) ->
-    error(unlock_deadlocked);
+handle_call(unlock, _From, #state{deadlocked = {true, DL}}) ->
+    error({unlock_deadlocked, DL});
 
 %% Unlock
 handle_call(unlock, _From, State) ->
@@ -148,7 +152,9 @@ handle_cast({unsubscribe, From}, State = #state{subscribers = Subs}) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%%%======================
 %% Private functions
+%%%======================
 
 get_waitee(Who, State = #state{reqid_map = WaitsRev}) when is_reference(Who) ->
     case maps:find(Who, WaitsRev) of
@@ -190,12 +196,16 @@ remove_monitored_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}
             State#state{waitees = NewWaits, reqid_map = NewReqMap}
     end.
                                               
-            
+foreign_deadlock({foreign, DL}) ->
+    {foreign, DL};
+foreign_deadlock(DL) ->
+    {foreign, DL}.
+    
 report_deadlock(DL, State) ->
     %% Notify waitees
     Sends = [ begin
                   Mon = mon_reg:mon_of(State#state.mon_register, Pid),
-                  {Mon, ?DEADLOCK_PROP(DL)}
+                  {Mon, ?DEADLOCK_PROP(foreign_deadlock(DL))}
               end
               || Pid <- State#state.waitees
             ],

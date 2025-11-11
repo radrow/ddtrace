@@ -168,8 +168,8 @@ run_scenario(Scenario, Opts) ->
 
     FScenario = fix_scenario(ProcMap, Scenario),
     
-    %% {_, _, FSS} = depidify(#{}, 0, FScenario),
-    %% io:format("SCENARIO\n\n~p\n\n", [FSS]),
+    {_, _, FSS} = depidify(#{}, 0, FScenario),
+    io:format("SCENARIO\n\n~p\n\n", [FSS]),
 
     FullProcList =
         maps:fold(
@@ -253,7 +253,7 @@ run_scenario(Scenario, Opts) ->
             logging:log_terminate();
         {deadlock, Deadlocks} ->
             logging:log_deadlocks(Deadlocks);
-        {timeout, Rem} ->
+        {Timeout, Rem} ->
             logging:log_timeout(Rem)
     end,
 
@@ -579,7 +579,7 @@ run_many(Bench, Opts) ->
                                      end,
                         Printer ! {update, self(), 0, busy},
                         {Log, Result} = run_scenario(Scenario, SOpts),
-                        Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; timeout -> time end},
+                        Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; {timeout, _} -> time end},
                         Stats = [], %% Stats = logging:log_stats(Log),
                         logging:delete(),
                         Self ! {success, Ref, self(), Type, Size, Stats, Result}

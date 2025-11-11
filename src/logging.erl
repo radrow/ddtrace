@@ -229,6 +229,8 @@ log_timeout(Remaining) ->
     print(c_timeout(Remaining)).
 
 
+c_lock_list({foreign, DL}) ->
+    ["&", c_lock_list(DL)];
 c_lock_list([]) ->
     "";
 c_lock_list([First|L]) ->

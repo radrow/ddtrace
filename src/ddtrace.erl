@@ -127,9 +127,12 @@ handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
 %%% handle_event: Deadlock propagation
 %%%======================
 
-handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
+handle_event(cast, ?DEADLOCK_PROP(DL), ?synced, Data) ->
     state_deadlock(DL, Data),
     keep_state_and_data;
+%% handle_event(cast, ?DEADLOCK_PROP(DL), ?wait_mon(_, _), Data) ->
+%%     state_deadlock(DL, Data),
+%%     keep_state_and_data;
 
 %%%======================
 %%% handle_event: Traces
@@ -229,7 +232,8 @@ handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo, Rest), Dat
 
 %% Receive dispatcher: Receive unwanted process trace
 handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfoOther, Rest), Data) ->
-    {next_state, ?wait_proc(From, MsgInfo, Rest ++ [?wait_mon_obj(MsgInfoOther)]), Data};
+    State = ?wait_mon(MsgInfoOther, ?wait_proc(From, MsgInfo, Rest)),
+    {next_state, State, Data};
     
 %% Receive dispatcher: Awaiting process trace, got irrelevant message
 handle_event(_Kind, _Msg, ?wait_proc(_From, _MsgInfo, _Rest), _Data) ->
