@@ -143,11 +143,12 @@ handle_cast({subscribe, From}, State = #state{deadlocked = {true, DL}}) ->
 
 %% Deadlock subscription --- add subscriber
 handle_cast({subscribe, From}, State = #state{deadlocked = false}) ->
-    {noreply, State #state{subscribers = [From | State#state.subscribers]}};
+    {noreply, State#state{subscribers = [From | State#state.subscribers]}};
 
+%% Deadlock unsubscription --- remove subscriber
 handle_cast({unsubscribe, From}, State = #state{subscribers = Subs}) ->
     NewSubs = lists:delete(From, Subs),
-    {noreply, State #state{subscribers = NewSubs}};
+    {noreply, State#state{subscribers = NewSubs}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.

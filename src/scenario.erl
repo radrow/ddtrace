@@ -169,7 +169,7 @@ run_scenario(Scenario, Opts) ->
     FScenario = fix_scenario(ProcMap, Scenario),
     
     {_, _, FSS} = depidify(#{}, 0, FScenario),
-    io:format("SCENARIO\n\n~p\n\n", [FSS]),
+    %% io:format("SCENARIO\n\n~p\n\n", [FSS]),
 
     FullProcList =
         maps:fold(
@@ -253,10 +253,16 @@ run_scenario(Scenario, Opts) ->
             logging:log_terminate();
         {deadlock, Deadlocks} ->
             logging:log_deadlocks(Deadlocks);
-        {Timeout, Rem} ->
+        {timeout, Rem} ->
             logging:log_timeout(Rem)
     end,
 
+    
+    [ begin
+          ddtrace:stop_tracer(M)
+      end
+      ||  {_, {M, _P}} <- maps:to_list(ProcMap)
+    ],
     unlink(Supervisor),
     exit(Supervisor, shutdown),
 

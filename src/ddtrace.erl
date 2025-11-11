@@ -15,7 +15,7 @@
 -export([handle_event/4]).
 
 %% DDTrace API
--export([subscribe_deadlocks/1, unsubscribe_deadlocks/1]).
+-export([subscribe_deadlocks/1, unsubscribe_deadlocks/1, stop_tracer/1]).
 
 %%%======================
 %%% Types
@@ -32,6 +32,7 @@
     , erl_monitor          :: reference()    % the Erlang monitor reference
     , mon_register         :: process_name() % registry of monitors for each worker process
     , mon_state            :: process_name() % the process holding the monitor state
+    , tracer               :: process_name() % the srpc_tracer process
     }).
 
 
@@ -64,12 +65,13 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
 
     mon_reg:set_mon(MonRegister, Worker, self()),
     {ok, MonState} = ddtrace_state:start_link(Worker, MonRegister),
+    {ok, Tracer} = srpc_tracer:start_link(Worker, self(), MonRegister),
 
-    init_trace(Worker),
     Data = #data{ worker = Worker
                 , erl_monitor = ErlMon
                 , mon_register = MonRegister
                 , mon_state = MonState
+                , tracer = Tracer
                 },
 
     {ok, ?synced, Data, []}.
@@ -84,30 +86,15 @@ terminate(_Reason, Data) ->
     erlang:demonitor(ErlMon, [flush]),
     ok.
 
-
-init_trace(Worker) ->
-    TraceOpts = ['send', 'receive', strict_monotonic_timestamp],
-    erlang:trace(Worker, true, TraceOpts),
-
-    erlang:trace_pattern(
-      'send',
-      [ {['_', {'$gen_call', '_', '_'}], [], []} % gen_server call
-      , {['_', {'_', '_'}], [], []} % gen_server reply
-      ]
-     ),
-    erlang:trace_pattern(
-      'receive',
-      [ {['_', '_', {'$gen_call', '_', '_'}], [], []} % gen_server call
-      , {['_', '_', {'$1', '_'}], [{'=/=', '$1', code_server}], []} % gen_server reply
-      ]
-     ).
-
 %%%======================
 %%% handle_event: All-time interactions
 %%%======================
 
 %% This is only to allow tracer to log state transitions
 handle_event(enter, _OldState, _NewState, _Data) ->
+    %% Worker = Data#data.worker,
+    %% TRef = erlang:trace_delivered(Worker),
+    %% receive {trace_delivered, Worker, TRef} -> ok end,
     keep_state_and_data;
 
 handle_event({call, From}, subscribe, _State, Data) ->
@@ -117,6 +104,11 @@ handle_event({call, From}, subscribe, _State, Data) ->
 handle_event({call, From}, unsubscribe, _State, Data) ->
     cast_mon_state({unsubscribe, From}, Data),
     keep_state_and_data;
+
+handle_event({call, From}, stop_tracer, _State, Data) ->
+    Tracer = Data#data.tracer,
+    gen_statem:call(Tracer, stop),
+    {keep_state_and_data, {reply, From, ok}};
 
 %% Worker process died
 handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
@@ -134,82 +126,23 @@ handle_event(cast, ?DEADLOCK_PROP(DL), ?synced, Data) ->
 %%     state_deadlock(DL, Data),
 %%     keep_state_and_data;
 
-%%%======================
-%%% handle_event: Traces
-%%%======================
-
-%% Send query
-handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Send response (alias-based)
-handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS(ReqId), To, _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Send response (plain ReqId)
-handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Receive query
-handle_event(info,
-             _Trace = {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
-             _State,
-             Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
-    case mon_of(Data, From) of
-        undefined ->
-            %% If the sender is not being monitored, we fake monitor notification
-            FakeNotif = {next_event, cast, ?NOTIFY(From, ?QUERY_INFO(ReqId))},
-            Events = [Event, FakeNotif];
-        _Pid ->
-            Events = [Event]
-    end,
-    {keep_state_and_data, Events};
-
-%% Receive response (alias-based)
-handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS(ReqId), _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
-
-%% Receive response (plain ReqId)
-handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP(ReqId), _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
 
 %%%======================
 %%% handle_event: Events
 %%%======================
 
 %% Send
-handle_event(internal, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
+handle_event(cast, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
     {keep_state, Data1};
-handle_event(internal, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _, _), Data) ->
+handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _, _), Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
     {keep_state, Data1};
 
 %% Receive dispatcher: Synced -> wait for monitor notification
-handle_event(internal, ?RECV_INFO(MsgInfo), ?synced, Data) ->
+handle_event(cast, ?RECV_INFO(MsgInfo), ?synced, Data) ->
     {next_state, ?wait_mon(MsgInfo, []), Data};
 
 %% Receive dispatcher: Synced -> wait for process trace
@@ -226,12 +159,12 @@ handle_event(_Kind, _Msg, ?wait_mon(_MsgInfo, _Rest), _Data) ->
     {keep_state_and_data, postpone};
 
 %% Receive dispatcher: Receive awaited process trace
-handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo, Rest), Data0) ->
+handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo, Rest), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?wait(Rest), Data1};
 
 %% Receive dispatcher: Receive unwanted process trace
-handle_event(internal, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfoOther, Rest), Data) ->
+handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfoOther, Rest), Data) ->
     State = ?wait_mon(MsgInfoOther, ?wait_proc(From, MsgInfo, Rest)),
     {next_state, State, Data};
     
@@ -243,7 +176,7 @@ handle_event(_Kind, _Msg, ?wait_proc(_From, _MsgInfo, _Rest), _Data) ->
 handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
-handle_event(cast, ?PROBE(Probe, L), ?wait_mon(_, _), Data) ->
+handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_), _), Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
@@ -253,6 +186,9 @@ handle_event(_Kind, _Msg, _State, _Data) ->
 %%%======================
 %%% Monitor user API
 %%%======================
+
+stop_tracer(Mon) ->
+    gen_statem:call(Mon, stop_tracer).
 
 subscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, subscribe).
@@ -264,12 +200,10 @@ unsubscribe_deadlocks(Mon) ->
 %%% Internal Helper Functions
 %%%======================
 
-%% Receive query
 handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
     state_wait(From, ReqId, Data);
 handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
     state_wait(From, ReqId, Data);
-%% Receive response
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     state_unlock(Data).
 
@@ -327,3 +261,4 @@ handle_mon_state_response({send, Sends}, _Data) ->
 
 mon_of(Data, To) ->
     mon_reg:mon_of(Data#data.mon_register, To).
+
