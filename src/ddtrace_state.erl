@@ -17,7 +17,7 @@
     , waitees            :: [process_name()] % callers waiting on us
     , reqid_map = #{}
     , subscribers = []   :: [gen_statem:from()]
-    , deadlocked = false :: {deadlocked, [process_name()]} | false
+    , deadlocked = false :: {true, [process_name()]} | false
     }).
 
 
@@ -42,6 +42,16 @@ init([Worker, MonRegister]) ->
               },
     {ok, State}.
 
+%% Add waitee (deadlocked)
+handle_call({wait, Who, ReqId}, _From, State = #state{deadlocked = {true, DL}}) ->
+    State1 = add_waitee(Who, ReqId, State),
+    Resp = case mon_reg:mon_of(State#state.mon_register, Who) of
+               undefined -> ok;
+               MonPid when is_pid(MonPid) ->
+                   {send, [{MonPid, ?DEADLOCK_PROP(DL)}]}
+           end,
+    {reply, Resp, State1};
+
 %% Add waitee (unlocked)
 handle_call({wait, Who, ReqId}, _From, State = #state{probe = undefined}) ->
     State1 = add_waitee(Who, ReqId, State),
@@ -58,6 +68,10 @@ handle_call({wait, Who, ReqId}, _From, State = #state{probe = Probe}) ->
            end,
     {reply, Resp, State1};
 
+%% Remove waitee while deadlocked --- error
+handle_call({unwait, _}, _From, #state{deadlocked = {true, _}}) ->
+    error(unwait_deadlocked);
+
 %% Remove waitee
 handle_call({unwait, WhoId}, _From, State) ->
     State1 = remove_waitee(WhoId, State),
@@ -65,7 +79,7 @@ handle_call({unwait, WhoId}, _From, State) ->
 
 %% Lock while already locked --- error
 handle_call({lock, _}, _From, #state{probe = Probe}) when Probe =/= undefined ->
-    error({badarg, already_locked});
+    error(already_locked);
 
 %% Set lock
 handle_call({lock, Probe}, _From, State) ->
@@ -74,11 +88,11 @@ handle_call({lock, Probe}, _From, State) ->
 
 %% Unlock while not locked --- error
 handle_call(unlock, _From, #state{probe = undefined}) ->
-    error({badarg, unlock_not_locked});
+    error(unlock_not_locked);
 
 %% Unlock while deadlocked --- error
-handle_call(unlock, _From, #state{deadlocked = {deadlocked, _}}) ->
-    error({badarg, unlock_deadlocked});
+handle_call(unlock, _From, #state{deadlocked = {true, _}}) ->
+    error(unlock_deadlocked);
 
 %% Unlock
 handle_call(unlock, _From, State) ->
@@ -119,7 +133,7 @@ handle_call(?DEADLOCK_PROP(_DL), _From, State) ->
 
 
 %% Deadlock subscription while deadlocked --- reply immediately
-handle_cast({subscribe, From}, State = #state{deadlocked = {deadlock, DL}}) ->
+handle_cast({subscribe, From}, State = #state{deadlocked = {true, DL}}) ->
     gen_statem:reply(From, {deadlock, DL}),
     {noreply, State};
 
@@ -152,7 +166,10 @@ add_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when
         {ok, _} -> error({already_waiting, Who});
         _ -> ok
     end,
-    State#state{waitees = [Who|Waits], reqid_map = ReqMap#{ReqId=>Who}}.
+    State#state{
+      waitees = [Who|Waits],
+      reqid_map = ReqMap#{ReqId=>Who}
+     }.
 
 remove_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
     case get_waitee(Who, State) of
@@ -182,7 +199,7 @@ report_deadlock(DL, State) ->
     
     %% Set deadlocked flag. Clear subscribers (so they are notified only once).
     State1 = State#state{
-               deadlocked = {deadlocked, DL},          
+               deadlocked = {true, DL},          
                subscribers = []
               },
     

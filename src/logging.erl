@@ -8,7 +8,7 @@
 
 -export([ log_terminate/0, log_deadlocks/1
         , log_scenario/2
-        , log_timeout/0
+        , log_timeout/1
         , log_trace/1, log_trace/2
         ]).
 
@@ -171,8 +171,11 @@ c_deadlocks(DLs) ->
       end
     ].
 
-c_timeout() ->
-    {[white, bold, underline, invert], "### TIMEOUT ###"}.
+c_timeout(Remaining) ->
+    [ {[white, bold, underline, invert], "### TIMEOUT ###"},
+      "  ",
+      [c_who(SessionId) || SessionId <- Remaining]
+    ].
 
 c_reqid(ReqId) ->
     I = index(ReqId, reqid),
@@ -222,8 +225,8 @@ log_terminate() ->
 log_deadlocks(DLs) ->
     print(c_deadlocks(DLs)).
 
-log_timeout() ->
-    print(c_timeout()).
+log_timeout(Remaining) ->
+    print(c_timeout(Remaining)).
 
 
 c_lock_list([]) ->
@@ -235,6 +238,7 @@ c_lock_list([First|L]) ->
     , ")"
     ].
 
+%% c_state(_) -> [];
 c_state(synced) ->
     {[green, bold, invert], " S "};
 c_state({wait_mon, MsgInfo}) ->
@@ -249,6 +253,18 @@ c_state(?wait_proc(From, MsgInfo, _Rest)) -> c_state({wait_proc, From, MsgInfo})
 c_state(?wait_mon(MsgInfo, _Rest)) -> c_state({wait_mon, MsgInfo}). 
 
 
+c_instate({deadlock, DL}) ->
+    [ {[red, bold, invert, blink], " D "}, "(", c_lock_list(DL), ")"];
+c_instate({lock, ReqId}) ->
+    [ {[red, bold, invert], " L "}, "(", c_probe(ReqId), ")"];
+c_instate(unlock) ->
+    [ {[green, bold, invert], " U "} ];
+c_instate({wait, Who}) ->
+    [ {[yellow, bold, invert], " W "}, "(", c_who(Who), ")" ];
+c_instate({unwait, Who}) ->
+    [ {[cyan, bold, invert], " UW "}, "(", c_who(Who), ")"].
+
+
 c_msg_info(?QUERY_INFO(ReqId)) ->
     c_query(ReqId);
 c_msg_info(?RESP_INFO(ReqId)) ->
@@ -261,9 +277,9 @@ c_event(?RECV_INFO(MsgInfo)) ->
 c_event(?SEND_INFO(To, MsgInfo)) ->
     [c_who(To), " ! ", c_msg_info(MsgInfo)];
 c_event(?NOTIFY(From, MsgInfo)) ->
-    [c_who(From), " ? ", c_msg_info(MsgInfo)];
+    [c_who(From), " $? ", c_msg_info(MsgInfo)];
 c_event(?PROBE(Probe, _L)) ->
-    [c_probe(Probe)];
+    ["? ", c_probe(Probe)];
 c_event(?HANDLE_RECV(From, MsgInfo)) ->
     ["{", c_who(From), " ? ", c_msg_info(MsgInfo), " }"];
 c_event({enter, OldState, NewState}) ->
@@ -275,9 +291,12 @@ c_event({info, Ev, _State}) when element(1, Ev) =:= trace_ts ->
 c_event({{call, _}, _Ev, _State}) ->
     "call";
 c_event(?DEADLOCK_PROP(DL)) ->
-    [{[red_l, bold, invert], " D "}, c_lock_list(DL)];
+    [{[red, bold], " D "}, c_lock_list(DL)];
+c_event({state, St}) ->
+    c_instate(St);
 c_event(T) ->
-    c_thing(T).
+    silent.
+    %% c_thing(T).
 
 c_timestamp(InitT, {T, _TimeIdx}) ->
     MicrosTotal = erlang:convert_time_unit(T - InitT, native, microsecond),
@@ -294,9 +313,13 @@ c_timestamp(InitT, {T, _TimeIdx}) ->
     end.
 
 c_trace(InitT, Time, Who, What) ->
-    [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time), " "]; _ -> "" end
-    , c_by(Who, c_event(What))
-    ].
+    case c_event(What) of
+        silent -> [];
+        F ->
+            [ case get(?LOG_TIMESTAMP) of true -> [c_timestamp(InitT, Time), " "]; _ -> "" end
+            , c_by(Who, F)
+            ]
+    end.
 
 log_trace(T) ->
     log_trace(0, T).

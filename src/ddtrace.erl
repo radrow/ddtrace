@@ -128,7 +128,7 @@ handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
 %%%======================
 
 handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
-    call_mon_state(?DEADLOCK_PROP(DL), Data),
+    state_deadlock(DL, Data),
     keep_state_and_data;
 
 %%%======================
@@ -197,21 +197,21 @@ handle_event(info,
 
 %% Send query
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?synced, Data) ->
-    call_mon_state({lock, ReqId}, Data),
+    state_lock(ReqId, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?QUERY_INFO(ReqId)), ?wait_proc(_, _, _), Data) ->
-    call_mon_state({lock, ReqId}, Data),
+    state_lock(ReqId, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
 %% Send response
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?synced, Data) ->
-    call_mon_state({unwait, To}, Data),
+    state_unwait(To, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 handle_event(internal, ?SEND_INFO(To, MsgInfo = ?RESP_INFO(_ReqId)), ?wait_proc(_, _, _), Data) ->
-    call_mon_state({unwait, To}, Data),
+    state_unwait(To, Data),
     send_notif(To, MsgInfo, Data),
     keep_state_and_data;
 
@@ -272,12 +272,26 @@ unsubscribe_deadlocks(Mon) ->
 
 %% Receive query
 handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
-    call_mon_state({wait, From, ReqId}, Data);
+    state_wait(From, ReqId, Data);
 handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
-    call_mon_state({wait, From, ReqId}, Data);
+    state_wait(From, ReqId, Data);
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
-    call_mon_state(unlock, Data).
+    state_unlock(Data).
 
+state_wait(Who, ReqId, Data) ->
+    call_mon_state({wait, Who, ReqId}, Data).
+
+state_unwait(Who, Data) ->
+    call_mon_state({unwait, Who}, Data).
+
+state_unlock(Data) ->
+    call_mon_state(unlock, Data).
+    
+state_lock(ReqId, Data) ->
+    call_mon_state({lock, ReqId}, Data).
+
+state_deadlock(DL, Data) ->
+    call_mon_state(?DEADLOCK_PROP(DL), Data).
 
 send_notif(To, MsgInfo, Data) ->
     Mon = mon_of(Data, To),
@@ -303,7 +317,9 @@ cast_mon_state(Msg, #data{mon_state = Pid}) ->
 handle_mon_state_response(ok, _Data) ->
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
-    [ gen_statem:cast(ToPid, Msg)
+    [ begin
+          gen_statem:cast(ToPid, Msg)
+      end
       || {ToPid, Msg} <- Sends
     ],
     ok.

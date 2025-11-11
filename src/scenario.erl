@@ -54,6 +54,24 @@ fix_scenario(Map, Scenario) ->
     ].
 
 
+depidify(Map, Feed, Pid) when is_pid(Pid) ->
+    case maps:find(Pid, Map) of
+        {ok, I} -> {Map, Feed, I};
+        error -> {maps:put(Pid, Feed, Map), Feed + 1, Feed}
+    end;
+depidify(Map, Feed, [H|T]) ->
+    {Map1, Feed1, H1} = depidify(Map, Feed, H),
+    {Map2, Feed2, T1} = depidify(Map1, Feed1, T),
+    {Map2, Feed2, [H1|T1]};
+depidify(Map, Feed, T) when is_tuple(T) ->
+    L = tuple_to_list(T),
+    {M1, F1, L1} = depidify(Map, Feed, L),
+    {M1, F1, list_to_tuple(L1)};
+depidify(Map, Feed, X) ->
+    {Map, Feed, X}.
+
+
+
 %% Estimates (poorly) how many actors there are in a scenario
 session_size([]) -> 0;
 session_size([Stmt|Rest]) ->
@@ -149,6 +167,9 @@ run_scenario(Scenario, Opts) ->
     ],
 
     FScenario = fix_scenario(ProcMap, Scenario),
+    
+    %% {_, _, FSS} = depidify(#{}, 0, FScenario),
+    %% io:format("SCENARIO\n\n~p\n\n", [FSS]),
 
     FullProcList =
         maps:fold(
@@ -174,7 +195,6 @@ run_scenario(Scenario, Opts) ->
                            + 2000;
                   N when is_integer(N) -> N
               end,
-    %% %% io:format("TT: ~p\n", [Timeout]),
     logging:log_scenario(FScenario, Timeout),
 
     Tracer = tracer:start_link(FullProcList, [{logging_ets_known, LogKnown}, {logging_ets_fresh, LogFresh} | Opts]),
@@ -233,8 +253,8 @@ run_scenario(Scenario, Opts) ->
             logging:log_terminate();
         {deadlock, Deadlocks} ->
             logging:log_deadlocks(Deadlocks);
-        timeout ->
-            logging:log_timeout()
+        {timeout, Rem} ->
+            logging:log_timeout(Rem)
     end,
 
     unlink(Supervisor),
@@ -245,8 +265,8 @@ run_scenario(Scenario, Opts) ->
 
 %% Wait for all sessions to terminate, or timeout
 receive_responses(Reqs0, Remaining, Time) ->
-    {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time * 5, []),
-    gen_server:wait_response(_Reqs1, 2000, true),
+    {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time, []),
+    %% gen_server:wait_response(_Reqs1, 2000, true),
     Result.
 receive_responses(Reqs, [], _, Deadlocks) ->
     case Deadlocks of
@@ -260,7 +280,7 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
         no_request ->
             {{deadlock, Deadlocks}, Reqs0};
         timeout ->
-            {timeout, Reqs0};
+            {{timeout, Remaining}, Reqs0};
         {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1} ->
             ddtrace:unsubscribe_deadlocks(M),
             Remaining1 = reduce_remaining(Remaining, SessionId, reply),
@@ -558,7 +578,6 @@ run_many(Bench, Opts) ->
                                              [{csv, Path}]
                                      end,
                         Printer ! {update, self(), 0, busy},
-                        io:format("~p\n\n", [Scenario]),
                         {Log, Result} = run_scenario(Scenario, SOpts),
                         Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; timeout -> time end},
                         Stats = [], %% Stats = logging:log_stats(Log),
@@ -588,7 +607,7 @@ run_many(Bench, Opts) ->
     io:format(Log, "run,time,type,size,total,sent,inits,mon_mon,proc_mon,mon_proc,proc_proc,queries,replies,probes,success,deadlock\n", []),
     [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
                 [I,Time,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,
-                 case Result of timeout -> 2; {deadlock, _} -> 1; ok -> 0 end, Deadlocks])
+                 case Result of {timeout, _} -> 2; {deadlock, _} -> 1; ok -> 0 end, Deadlocks])
       || {I, {Type, Size,
               #{total := Total,
                 sent := Sent,
