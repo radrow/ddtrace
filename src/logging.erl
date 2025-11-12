@@ -282,8 +282,6 @@ c_event(?NOTIFY(From, MsgInfo)) ->
     [c_who(From), " $? ", c_msg_info(MsgInfo)];
 c_event(?PROBE(Probe, _L)) ->
     ["? ", c_probe(Probe)];
-c_event(?HANDLE_RECV(From, MsgInfo)) ->
-    ["{", c_who(From), " ? ", c_msg_info(MsgInfo), " }"];
 c_event({enter, OldState, NewState}) ->
     ["[", c_state(OldState), "]\t=> ", c_state(NewState)];
 c_event({'DOWN', _, process, _Pid, Reason}) ->

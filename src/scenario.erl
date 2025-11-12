@@ -279,21 +279,23 @@ receive_responses(Reqs, [], _, Deadlocks) ->
         [] -> {ok, Reqs};
         _ -> {{deadlock, Deadlocks}, Reqs}
     end;
+receive_responses(Reqs0, Remaining, Time, Deadlocks) when Time < 0 ->
+    receive_responses(Reqs0, Remaining, 0, Deadlocks);
 receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
-    case gen_server:wait_response(Reqs0, Time, true) of
-        no_request when Deadlocks =:= [] ->
+    case time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end) of
+        {_, no_request} when Deadlocks =:= [] ->
             {ok, Reqs0};
-        no_request ->
+        {_, no_request} ->
             {{deadlock, Deadlocks}, Reqs0};
-        timeout ->
+        {_, timeout} ->
             {{timeout, Remaining}, Reqs0};
-        {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1} ->
+        {TimeD, {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
             ddtrace:unsubscribe_deadlocks(M),
             Remaining1 = reduce_remaining(Remaining, SessionId, reply),
-            receive_responses(Reqs1, Remaining1, Time, Deadlocks);
-        {{reply, {deadlock, DL}}, {deadlock, SessionId, _ReqReply}, Reqs1} ->
+            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
+        {TimeD, {{reply, {deadlock, DL}}, {deadlock, SessionId, _ReqReply}, Reqs1}} ->
             Remaining1 = reduce_remaining(Remaining, SessionId, deadlock),
-            receive_responses(Reqs1, Remaining1, Time, [DL | Deadlocks])
+            receive_responses(Reqs1, Remaining1, Time - TimeD, [DL | Deadlocks])
     end.
 
 reduce_remaining(Remaining, SessionId, Mode) ->
@@ -322,6 +324,14 @@ parse_scenario(Test) ->
         _ ->
             error(decide_bench_or_sessions)
     end.
+
+%% Run operation and measure time in ms
+time_ms(Fun) ->
+    Start = erlang:monotonic_time(),
+    Res = Fun(),
+    End = erlang:monotonic_time(),
+    TimeMs = erlang:convert_time_unit(End - Start, native, millisecond),
+    {TimeMs, Res}.
 
 
 %% Set RNG seed according to the config
@@ -599,7 +609,9 @@ run_many(Bench, Opts) ->
     MAX_SIZE = 150000,
 
     Printer ! {workers, [W || {_, _, W, _} <- Workers], MAX_SIZE},
-    Stats = get_results(scenario_gen:shuffle(Workers), MAX_SIZE, Printer),
+
+    %% Stats = get_results(scenario_gen:shuffle(Workers), MAX_SIZE, Printer),
+    Stats = get_results(Workers, MAX_SIZE, Printer),
 
     Printer ! {self(), finito},
     receive {Printer, ok} -> ok end,

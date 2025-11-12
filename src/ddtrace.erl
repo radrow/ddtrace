@@ -10,7 +10,7 @@
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
--export([terminate/3, terminate/2]).
+-export([terminate/3]).
 
 -export([handle_event/4]).
 
@@ -79,22 +79,27 @@ init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
 callback_mode() ->
     [handle_event_function, state_enter].
 
-terminate(Reason, _State, Data) ->
-    terminate(Reason, Data).
-terminate(_Reason, Data) ->
+terminate(_Reason, State, Data) ->
     ErlMon = Data#data.erl_monitor,
     erlang:demonitor(ErlMon, [flush]),
+    case State of
+        ?wait_mon(_, _) ->
+            error(terminated_while_waiting_monitor);
+        ?wait_proc(_, _, _) ->
+            error(terminated_while_waiting_process);
+        _ ->
+            ok
+    end,
     ok.
 
 %%%======================
 %%% handle_event: All-time interactions
 %%%======================
 
-%% This is only to allow tracer to log state transitions
+%% This is used allow the debug tracer (one that traces the monitor, not
+%% gen_server) to log state transitions
 handle_event(enter, _OldState, _NewState, _Data) ->
-    %% Worker = Data#data.worker,
-    %% TRef = erlang:trace_delivered(Worker),
-    %% receive {trace_delivered, Worker, TRef} -> ok end,
+    deliver_traces(_Data),
     keep_state_and_data;
 
 handle_event({call, From}, subscribe, _State, Data) ->
@@ -122,66 +127,109 @@ handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
 handle_event(cast, ?DEADLOCK_PROP(DL), ?synced, Data) ->
     state_deadlock(DL, Data),
     keep_state_and_data;
-%% handle_event(cast, ?DEADLOCK_PROP(DL), ?wait_mon(_, _), Data) ->
-%%     state_deadlock(DL, Data),
-%%     keep_state_and_data;
+
+handle_event(cast, ?DEADLOCK_PROP(DL), ?wait_mon(_, _), Data) ->
+    state_deadlock(DL, Data),
+    keep_state_and_data;
 
 
 %%%======================
-%%% handle_event: Events
+%%% handle_event: Monitor operation
 %%%======================
 
-%% Send
+%%%======================
+%% Send trace
+
+%% Handle send trace in synced state
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
     {keep_state, Data1};
+
+%% Handle send trace while awaiting process trace
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _, _), Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
     send_notif(To, MsgInfo, Data),
     {keep_state, Data1};
 
-%% Receive dispatcher: Synced -> wait for monitor notification
+%% Awaiting notification: postpone
+handle_event(cast, ?SEND_INFO(_, _), ?wait_mon(_, _), _Data) ->
+    {keep_state_and_data, postpone};
+
+%%%======================
+%% Receive trace
+
+%% We were synced, so now we wait for monitor notification
 handle_event(cast, ?RECV_INFO(MsgInfo), ?synced, Data) ->
     {next_state, ?wait_mon(MsgInfo, []), Data};
 
-%% Receive dispatcher: Synced -> wait for process trace
-handle_event(cast, ?NOTIFY(From, MsgInfo), ?synced, Data) ->
-    {next_state, ?wait_proc(From, MsgInfo, []), Data};
-
-%% Receive dispatcher: Receive awaited notification
-handle_event(cast, ?NOTIFY(From, MsgInfo), ?wait_mon(MsgInfo, Rest), Data0) ->
-    Data1 = handle_recv(From, MsgInfo, Data0),
-    {next_state, ?wait(Rest), Data1};
-
-%% Receive dispatcher: Awaiting notification, got irrelevant message
-handle_event(_Kind, _Msg, ?wait_mon(_MsgInfo, _Rest), _Data) ->
-    {keep_state_and_data, postpone};
-
-%% Receive dispatcher: Receive awaited process trace
+%% Awaited process receive-trace
 handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo, Rest), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?wait(Rest), Data1};
 
-%% Receive dispatcher: Receive unwanted process trace
-handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfoOther, Rest), Data) ->
-    State = ?wait_mon(MsgInfoOther, ?wait_proc(From, MsgInfo, Rest)),
+%% Unwanted process receive-trace. We wait for notification first, and then
+%% resume waiting for the process trace.
+handle_event(cast, ?RECV_INFO(MsgInfoOther), ?wait_proc(From, MsgInfo, Rest), Data) ->
+    ?wait(NewRest) = ?wait_proc(From, MsgInfo, Rest),
+    State = ?wait_mon(MsgInfoOther, NewRest),
     {next_state, State, Data};
-    
-%% Receive dispatcher: Awaiting process trace, got irrelevant message
-handle_event(_Kind, _Msg, ?wait_proc(_From, _MsgInfo, _Rest), _Data) ->
+
+%% Awaiting notification: postpone
+handle_event(cast, ?RECV_INFO(_), ?wait_mon(_, _), _Data) ->
     {keep_state_and_data, postpone};
 
-%% Receive probe
+%%%======================
+%% Monitor notification
+    
+%% We were synced, so now we wait for process trace
+handle_event(cast, ?NOTIFY(From, MsgInfo), ?synced, Data) ->
+    {next_state, ?wait_proc(From, MsgInfo, []), Data};
+
+%% Awaited notification
+handle_event(cast, ?NOTIFY(From, MsgInfo), ?wait_mon(MsgInfo, Rest), Data0) ->
+    Data1 = handle_recv(From, MsgInfo, Data0),
+    {next_state, ?wait(Rest), Data1};
+
+%% Unwanted notification: postpone
+handle_event(cast, ?NOTIFY(_From, _MsgInfoOther), ?wait_mon(_MsgInfo, _Rest), _Data) ->
+    {keep_state_and_data, postpone};
+
+%% Awaiting trace: postpone
+handle_event(cast, ?NOTIFY(_, _), ?wait_proc(_, _, _), _Data) ->
+    {keep_state_and_data, postpone};
+
+%%%======================
+%% Probe
+
+%% Handle probe in synced state
 handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
+
+%% Handle probe while awaiting monitor notification (since probes come from
+%% monitors). TODO: filter to make sure the probe comes from the right monitor
+%% only?
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_), _), Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
+%% Handle probe while awaiting monitor notification about a query: wrong
+%% direction, postpone
+handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?QUERY_INFO(_), _), Data) ->
+    call_mon_state(?PROBE(Probe, L), Data),
+    keep_state_and_data;
+
+%% Awaiting trace: postpone
+handle_event(cast, ?PROBE(_, _), ?wait_proc(_, _, _), _Data) ->
+    {keep_state_and_data, postpone};
+
+%%%======================
+%% Edge cases
+
+%% We are somehow non-exhaustive or someone's pranked us
 handle_event(_Kind, _Msg, _State, _Data) ->
-    {keep_state_and_data, postpone}.
+    error({unexpected_event, _Kind, _Msg, _State}).
 
 %%%======================
 %%% Monitor user API
@@ -258,6 +306,10 @@ handle_mon_state_response({send, Sends}, _Data) ->
     ],
     ok.
 
+deliver_traces(Data) ->
+    Worker = Data#data.worker,
+    TRef = erlang:trace_delivered(Worker),
+    receive {trace_delivered, Worker, TRef} -> ok end.
 
 mon_of(Data, To) ->
     mon_reg:mon_of(Data#data.mon_register, To).
