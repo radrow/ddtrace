@@ -112,10 +112,18 @@ handle_event(info,
     Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
+%% The gen_server is either gonna crash or handle this. It definitely won't
+%% change its SRPC state.
 handle_event(info, {trace_ts, Worker, 'send_to_non_existing_process', _, To, _},
              _State, 
              _Data) ->
     io:format("~p: send_to_non_existing_process (~p) trace ignored~n", [Worker, To]),
+    keep_state_and_data;
+
+
+%% Other traces are ignored
+handle_event(info, Trace, _State, _Data) when element(1, Trace) =:= trace_ts;
+                                              element(1, Trace) =:= trace ->
     keep_state_and_data;
 
 %%%======================
