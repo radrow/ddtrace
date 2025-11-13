@@ -1,5 +1,6 @@
 defmodule DDTrace.TestServer do
   use GenServer
+  # alias :ddmon, as: GenServer
 
   def start_link(id, kind, opts) do
     GenServer.start_link(__MODULE__, {id, kind, opts}, opts)
@@ -78,8 +79,17 @@ defmodule DDTrace.TestServer do
           call(pid, {session_id, next})
         rescue e ->
             e
-        catch e, m ->
-            {e, m}
+        catch
+          :exit, {:shutdown, _info} ->
+            :shutdown
+          :exit, :shutdown ->
+            :shutdown
+          :exit, {:noproc, _} ->
+            :noproc
+          :exit, {:calling_self, info} ->
+             :deadlock_self
+          :exit, {{{:calling_self, info}, _}, _} ->
+            :erlang.error({:calling_self, info})
         end
       [var | next] when is_atom(var) ->
         case Map.get(vars, var, :none) do

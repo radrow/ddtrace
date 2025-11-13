@@ -56,6 +56,11 @@ handle_call({wait, Who, ReqId}, _From, State = #state{deadlocked = {true, DL}}) 
            end,
     {reply, Resp, State1};
 
+%% Add waitee (self)
+handle_call({wait, Who, _ReqId}, _From, State = #state{worker = Who}) ->
+    {Sends, State1} = report_deadlock([Who, Who], State),
+    {reply, {send, Sends}, State1};
+
 %% Add waitee (unlocked)
 handle_call({wait, Who, ReqId}, _From, State = #state{probe = undefined}) ->
     State1 = add_waitee(Who, ReqId, State),

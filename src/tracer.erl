@@ -46,6 +46,11 @@ config_tracer(Opts) ->
         logging:conf(Opts),
 
         erlang:trace_pattern(
+            {ddtrace, send_notif, 3},
+            [ {['_', '_', '_'], [], [trace]} ],
+            [local]
+         ),
+        erlang:trace_pattern(
             {ddtrace, state_deadlock, 2},
             [ {['_', '_'], [], [trace]} ],
             [local]
@@ -105,6 +110,11 @@ finish(Tracer, Tracees) ->
     end.
 
 handle({trace_ts, Who, 'call', 
+        {ddtrace, send_notif, [To, MsgInfo, _Data]},
+        Time}) ->
+    {Time, Who, {send, {notif, To, MsgInfo}}};
+
+handle({trace_ts, Who, 'call', 
         {ddtrace, state_deadlock, [DL, _Data]},
         Time}) ->
     {Time, Who, {state, {deadlock, DL}}};
@@ -120,14 +130,14 @@ handle({trace_ts, Who, 'call',
     {Time, Who, {state, unlock}};
 
 handle({trace_ts, Who, 'call', 
-        {ddtrace, state_wait, [From, _ReqId, _Data]},
+        {ddtrace, state_wait, [_From, ReqId, _Data]},
         Time}) ->
-    {Time, Who, {state, {wait, From}}};
+    {Time, Who, {state, {wait, ReqId}}};
 
 handle({trace_ts, Who, 'call', 
-        {ddtrace, state_unwait, [From, _Data]},
+        {ddtrace, state_unwait, [ReqId, _Data]},
         Time}) ->
-    {Time, Who, {state, {unwait, From}}};
+    {Time, Who, {state, {unwait, ReqId}}};
 
 handle({trace_ts, Who, 'call', 
         {ddtrace, handle_event, [enter, OldState, NewState, _Data]},

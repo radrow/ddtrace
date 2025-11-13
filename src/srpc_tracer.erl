@@ -19,6 +19,8 @@ callback_mode() ->
 
 init([Worker, Monitor, MonReg]) ->
     init_trace(Worker),
+    process_flag(trap_exit, true),
+    erlang:monitor(process, Worker),
 
     Data = 
      #{worker => Worker,
@@ -48,9 +50,14 @@ init_trace(Worker) ->
     ok.
 
 terminate(_Reason, _State, Data) ->
-    #{worker := Worker} = Data,
-    erlang:trace(Worker, false, ['receive', 'send']),
+    stop_tracing(Data),
     ok.
+
+handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason},
+             _State,
+             Data) ->
+    stop_tracing(Data),
+    keep_state_and_data;
 
 %%%======================
 %%% handle_event: Traces
@@ -66,11 +73,13 @@ handle_event(info,
 
 %% Send response (alias-based)
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS(ReqId), To, _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
+             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS_MSG(ReqId, Msg), To, _Ts},
+             State,
+             Data) ->
+    handle_event(info,
+                 {trace_ts, _Worker, 'send', ?GS_RESP_MSG(ReqId, Msg), To, _Ts},
+                 State,
+                 Data);
 
 %% Send response (plain ReqId)
 handle_event(info,
@@ -98,11 +107,13 @@ handle_event(info,
 
 %% Receive response (alias-based)
 handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS(ReqId), _Ts},
-             _State,
-             _Data) ->
-    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
-    {keep_state_and_data, [Event]};
+             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS_MSG(ReqId, Msg), _Ts},
+             State,
+             Data) ->
+    handle_event(info,
+             {trace_ts, _Worker, 'receive', ?GS_RESP_MSG(ReqId, Msg), _Ts},
+             State,
+             Data);
 
 %% Receive response (plain ReqId)
 handle_event(info,
@@ -112,8 +123,8 @@ handle_event(info,
     Event = {next_event, internal, ?RECV_INFO(?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% The gen_server is either gonna crash or handle this. It definitely won't
-%% change its SRPC state.
+%% The gen_server is either gonna crash or handle this somehow. It definitely
+%% won't change its SRPC state.
 handle_event(info, {trace_ts, Worker, 'send_to_non_existing_process', _, To, _},
              _State, 
              _Data) ->
@@ -167,8 +178,7 @@ handle_event(internal, {refresh_state, NewState}, state_change, Data) ->
 %%%======================
 
 handle_event({call, From}, stop, _State, Data) ->
-    #{worker := Worker} = Data,
-    erlang:trace(Worker, false, ['receive', 'send']),
+    stop_tracing(Data),
     {keep_state_and_data, {reply, From, ok}};
 
 handle_event(_Kind, _Ev, _State, _Data) ->
@@ -180,3 +190,8 @@ handle_event(_Kind, _Ev, _State, _Data) ->
 
 mon_of(#{mon_reg := MonReg}, To) ->
     mon_reg:mon_of(MonReg, To).
+
+stop_tracing(Data) ->
+    #{worker := Worker} = Data,
+    catch erlang:trace(Worker, false, ['receive', 'send']),
+    ok.

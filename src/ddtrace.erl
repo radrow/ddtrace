@@ -58,14 +58,18 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 %%% gen_statem Callbacks
 %%%======================
 
-init({Worker, MonRegister, _Opts}) when is_pid(Worker) ->
+init({Worker, MonRegister, Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
+    %% io:format("~p: Starting ddtrace for ~p~n", [self(), Worker]),
+
+    TracerMod = proplists:get_value(tracer_mod, Opts, srpc_tracer),
+    StateMod = proplists:get_value(state_mod, Opts, ddtrace_state),
     
     ErlMon = erlang:monitor(process, Worker),
 
     mon_reg:set_mon(MonRegister, Worker, self()),
-    {ok, MonState} = ddtrace_state:start_link(Worker, MonRegister),
-    {ok, Tracer} = srpc_tracer:start_link(Worker, self(), MonRegister),
+    {ok, MonState} = StateMod:start_link(Worker, MonRegister),
+    {ok, Tracer} = TracerMod:start_link(Worker, self(), MonRegister),
 
     Data = #data{ worker = Worker
                 , erl_monitor = ErlMon
@@ -84,9 +88,9 @@ terminate(_Reason, State, Data) ->
     erlang:demonitor(ErlMon, [flush]),
     case State of
         ?wait_mon(_, _) ->
-            error(terminated_while_waiting_monitor);
+            io:format("~p: Terminating while waiting for monitor notification~n\n\n\n", [self()]);
         ?wait_proc(_, _, _) ->
-            error(terminated_while_waiting_process);
+            io:format("~p: Terminating while waiting for process trace~n\n\n\n", [self()]);
         _ ->
             ok
     end,
@@ -115,10 +119,16 @@ handle_event({call, From}, stop_tracer, _State, Data) ->
     gen_statem:call(Tracer, stop),
     {keep_state_and_data, {reply, From, ok}};
 
-%% Worker process died
-handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, Data) ->
+%% The worker has attempted a call to itself. When this happens, no actual
+%% message is sent. We fake the call message to "detect" the deadlock.
+handle_event(info, {'DOWN', _ErlMon, process, _Pid, {calling_self, _}}, _State, Data) ->
+    handle_recv(Data#data.worker, ?QUERY_INFO(make_ref()), Data),
+    keep_state_and_data;
+%% The worker process has died.
+handle_event(info, {'DOWN', ErlMon, process, _Pid, _Reason}, _State, _Data) ->
     erlang:demonitor(ErlMon, [flush]),
-    {stop, normal, Data};
+    keep_state_and_data;
+    %% {stop, normal, Data};
 
 %%%======================
 %%% handle_event: Deadlock propagation

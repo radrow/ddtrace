@@ -9,10 +9,15 @@
 -define(DEADLOCK_PROP(DL), {'$ddt_deadlock_prop', DL}).
 
 %% -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
--define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, ReqId}, _}).
+-define(GS_CALL_FROM_MSG(From, ReqId, Msg), {'$gen_call', {From, ReqId}, Msg}).
+-define(GS_CALL_FROM(From, ReqId), ?GS_CALL_FROM_MSG(From, ReqId, _)).
 -define(GS_CALL(ReqId), ?GS_CALL_FROM(_, ReqId)).
--define(GS_RESP_ALIAS(ReqId), {[alias|ReqId], _Msg}).
--define(GS_RESP(ReqId), {ReqId, _Msg}).
+-define(GS_CALL_MSG(ReqId, Msg), ?GS_CALL_FROM_MSG(_, ReqId, Msg)).
+
+-define(GS_RESP_MSG(ReqId, Msg), {ReqId, Msg}).
+-define(GS_RESP_ALIAS_MSG(ReqId, Msg), ?GS_RESP_MSG([alias|ReqId], Msg)).
+-define(GS_RESP_ALIAS(ReqId), ?GS_RESP_ALIAS_MSG(ReqId, _)).
+-define(GS_RESP(ReqId), ?GS_RESP_MSG(ReqId, _)).
 
 %% Internal states
 -define(synced, {wait, []}).

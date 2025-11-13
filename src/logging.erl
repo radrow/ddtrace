@@ -6,9 +6,8 @@
 
 -export([type/1]).
 
--export([ log_terminate/0, log_deadlocks/1
-        , log_scenario/2
-        , log_timeout/1
+-export([ log_terminate/0, log_deadlocks/1, log_scenario/2, log_timeout/1
+        , log_result/1
         , log_trace/1, log_trace/2
         ]).
 
@@ -177,6 +176,7 @@ c_timeout(Remaining) ->
       [c_who(SessionId) || SessionId <- Remaining]
     ].
 
+c_reqid(ReqId) -> c_thing(ReqId);
 c_reqid(ReqId) ->
     I = index(ReqId, reqid),
     {[white_l, bold, italic], "i" ++ integer_to_list(I)}.
@@ -219,6 +219,13 @@ log_scenario(Scenario, Time) ->
             ]
           ]).
 
+log_result(ok) ->
+    log_terminate();
+log_result({deadlock, DLs}) ->
+    log_deadlocks(DLs);
+log_result({timeout, Remaining}) ->
+    log_timeout(Remaining).
+
 log_terminate() ->
     print(c_terminate()).
 
@@ -240,20 +247,12 @@ c_lock_list([First|L]) ->
     , ")"
     ].
 
-%% c_state(_) -> [];
-c_state(synced) ->
+c_state(?synced) ->
     {[green, bold, invert], " S "};
-c_state({wait_mon, MsgInfo}) ->
-    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfo), ")"];
-c_state({wait_proc, From, MsgInfo}) ->
+c_state(?wait_proc(From, MsgInfo, _Rest)) -> 
     [{[yellow, bold, invert], " P "}, "(", c_who(From), " @ ", c_msg_info(MsgInfo), ")"];
-c_state(handle_recv) ->
-    [ {[green, bold], " R "} ];
-
-c_state(?synced) -> c_state(synced);
-c_state(?wait_proc(From, MsgInfo, _Rest)) -> c_state({wait_proc, From, MsgInfo});
-c_state(?wait_mon(MsgInfo, _Rest)) -> c_state({wait_mon, MsgInfo}). 
-
+c_state(?wait_mon(MsgInfo, _Rest)) -> 
+    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfo), ")"].
 
 c_instate({deadlock, DL}) ->
     [ {[red, bold, invert, blink], " D "}, "(", c_lock_list(DL), ")"];
@@ -262,9 +261,9 @@ c_instate({lock, ReqId}) ->
 c_instate(unlock) ->
     [ {[green, bold, invert], " U "} ];
 c_instate({wait, Who}) ->
-    [ {[yellow, bold, invert], " W "}, "(", c_who(Who), ")" ];
+    [ {[yellow, bold, invert], " +W "}, "(", c_probe(Who), ")" ];
 c_instate({unwait, Who}) ->
-    [ {[cyan, bold, invert], " UW "}, "(", c_who(Who), ")"].
+    [ {[cyan, bold, invert], " -W "}, "(", c_probe(Who), ")"].
 
 
 c_msg_info(?QUERY_INFO(ReqId)) ->
@@ -272,6 +271,8 @@ c_msg_info(?QUERY_INFO(ReqId)) ->
 c_msg_info(?RESP_INFO(ReqId)) ->
     c_reply(ReqId).
 
+c_event({send, {notif, To, MsgInfo}}) ->
+    [c_who(To), " $! ", c_msg_info(MsgInfo)];
 c_event({Kind, Ev, State}) when Kind =:= internal; Kind =:= cast ->
     ["[", c_state(State), "]\t", c_event(Ev)];
 c_event(?RECV_INFO(MsgInfo)) ->

@@ -147,7 +147,8 @@ run_scenario(Scenario, Opts) ->
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  {ok, M} = ddtrace:start_link(P, MonReg),
+                  %% {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_ddmon_tracer}]),
+                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_tracer}]),
 
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -168,9 +169,6 @@ run_scenario(Scenario, Opts) ->
 
     FScenario = fix_scenario(ProcMap, Scenario),
     
-    {_, _, FSS} = depidify(#{}, 0, FScenario),
-    %% io:format("SCENARIO\n\n~p\n\n", [FSS]),
-
     FullProcList =
         maps:fold(
           fun(I, {M, P}, Acc) ->
@@ -213,6 +211,7 @@ run_scenario(Scenario, Opts) ->
                          end,
                      Mon = mon_reg:mon_of(MonReg, SessionInitProc),
                      RD = ddtrace:subscribe_deadlocks(Mon),
+                     %% R = ddmon:send_request_report(SessionInitProc, {SessionId, Session}),
                      R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
                      
                      ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, SessionInitProc, Mon, RD}, ReqIds),
@@ -221,7 +220,14 @@ run_scenario(Scenario, Opts) ->
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
     InitIdSet = [SessionId || {SessionId, _} <- FScenario],
-    Result = receive_responses(Reqs, InitIdSet, Timeout),
+    Result = try receive_responses(Reqs, InitIdSet, Timeout) of
+        R -> R
+    catch E:EE ->
+            {_, _, FSS1} = depidify(#{}, 0, FScenario),
+            io:format("FSCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
+            io:format("Error while receiving responses: ~p:~p~n~p\n", [E, EE]),
+            error(E)
+    end,
     timer:sleep(500),
     
     Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
@@ -248,31 +254,41 @@ run_scenario(Scenario, Opts) ->
             ok = file:write_file(CsvPath, Csv)
     end,
 
-    case Result of
-        ok ->
-            logging:log_terminate();
-        {deadlock, Deadlocks} ->
-            logging:log_deadlocks(Deadlocks);
-        {timeout, Rem} ->
-            logging:log_timeout(Rem)
-    end,
-
+    logging:log_result(Result),
     
     [ begin
-          ddtrace:stop_tracer(M)
+          catch ddtrace:stop_tracer(M)
       end
       ||  {_, {M, _P}} <- maps:to_list(ProcMap)
     ],
     unlink(Supervisor),
     exit(Supervisor, shutdown),
 
-    {Log, Result}.
+    [ io:format("~p: ~p~n\n\n\n\n\n\n", [SessionId, Mode])
+     || {SessionId, Mode} <- ets:tab2list(get(status_ets)),
+        Mode =/= reply, 
+        Mode =/= confirmed_deadlock,
+        Mode =/= deadlock,
+        true
+    ],
+    ets:delete(get(status_ets)),
+    
+    case Result of
+        {timeout, _} ->
+            {_, _, FSS} = depidify(#{}, 0, FScenario),
+            io:format("SCENARIO\n\n~p\n\n\n\n\n\n", [FSS]);
+        _ -> ok
+    end,
 
+    {Log, Result}.
 
 %% Wait for all sessions to terminate, or timeout
 receive_responses(Reqs0, Remaining, Time) ->
+    put(status_ets, ets:new(status_ets, [])),
+    
     {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time, []),
     %% gen_server:wait_response(_Reqs1, 2000, true),
+
     Result.
 receive_responses(Reqs, [], _, Deadlocks) ->
     case Deadlocks of
@@ -282,13 +298,31 @@ receive_responses(Reqs, [], _, Deadlocks) ->
 receive_responses(Reqs0, Remaining, Time, Deadlocks) when Time < 0 ->
     receive_responses(Reqs0, Remaining, 0, Deadlocks);
 receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
-    case time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end) of
+    Res = time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end),
+    case Res of
+        %% {TimeD, {{error, {{{calling_self, _}, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
+        %%     Remaining1 = reduce_remaining(Remaining, _SessionId, ddmon_deadlock),
+        %%     receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
+        %% {TimeD, {{error, {{_Err, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
+        %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+        %% {TimeD, {{error, {_Err, _Pid}}, {deadlock, _SessionId, _}, Reqs1}} ->
+        %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+        %% {TimeD, {{error, _E}, _L, Reqs1}} ->
+        %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+            
         {_, no_request} when Deadlocks =:= [] ->
+            io:format("SUBITO\n"),
             {ok, Reqs0};
         {_, no_request} ->
             {{deadlock, Deadlocks}, Reqs0};
         {_, timeout} ->
             {{timeout, Remaining}, Reqs0};
+        {TimeD, {{reply, {'$ddmon_deadlock_spread', _DL}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
+            Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock),
+            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
+        %% {TimeD, {{reply, {_, _, deadlock_self}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
+        %%     Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock),
+        %%     receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
         {TimeD, {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
             ddtrace:unsubscribe_deadlocks(M),
             Remaining1 = reduce_remaining(Remaining, SessionId, reply),
@@ -299,13 +333,58 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
     end.
 
 reduce_remaining(Remaining, SessionId, Mode) ->
-    case lists:member(SessionId, Remaining) of
-        true -> Remaining -- [SessionId];
-        false when Mode =:= reply ->
-            error({duplicated_reply, SessionId});
+    PrevMode = case ets:lookup(get(status_ets), SessionId) of [] -> none; [{_, M}] -> M end,
+    NewMode = 
+        case {PrevMode, Mode} of
+            {none, _} ->
+                Mode;
+            {deadlock, ddmon_deadlock} ->
+                confirmed_deadlock;
+            {deadlock, reply} ->
+                error(reply_deadlock);
+            {deadlock, deadlock} ->
+                deadlock;
+                
+            {ddmon_deadlock, deadlock} ->
+                confirmed_deadlock;
+            {ddmon_deadlock, reply} ->
+                error(ddmon_deadlock_reply);
+            {ddmon_deadlock, ddmon_deadlock} ->
+                error(dup_deadlock);
+
+            {reply, reply} ->
+                error(dup_reply);
+            {reply, deadlock} ->
+                reply;
+            {reply, ddmon_deadlock} ->
+                error(dup_reply_deadlock);
+            
+            {confirmed_deadlock, reply} ->
+                error(confirmed_deadlock_reply);
+            {confirmed_deadlock, deadlock} ->
+                confirmed_deadlock;
+            {confirmed_deadlock, ddmon_deadlock} ->
+                error(confirmed_deadlock_ddmon);
+
+            _ -> error({wtf, PrevMode, Mode})
+        end,
+    ets:insert(get(status_ets), {SessionId, NewMode}),
+    
+    case NewMode of
+        reply -> Remaining -- [SessionId];
+        deadlock -> Remaining -- [SessionId];
+        confirmed_deadlock -> Remaining -- [SessionId];
         _ ->
-            Remaining
+             Remaining
     end.
+        
+    %% case lists:member(SessionId, Remaining) of
+    %%     true -> Remaining -- [SessionId];
+    %%     false when Mode =:= reply ->
+    %%         error({duplicated_reply, SessionId});
+    %%     _ ->
+    %%         Remaining
+    %% end.
 
 %% Parse scenario together with in-file options
 parse_scenario(Test) ->
