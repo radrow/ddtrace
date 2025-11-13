@@ -306,6 +306,9 @@ unlocked({call, {Worker, PTag}}, {'$ddmon_ext_call', _Msg, Server}, _State = #st
       end
       || {_, #{from := W, monitored := true}} <- gen_statem:reqids_to_list(Waitees)
     ],
+    
+    ddmon:send_request_report(self(), _Msg),
+
     {next_state, deadlocked,
      #deadstate{ worker = Worker
                , deadlock = [self(), self()]

@@ -48,14 +48,12 @@ init_trace(Worker) ->
     ok.
 
 terminate(_Reason, _State, Data) ->
-    #{worker := Worker} = Data,
-    erlang:trace(Worker, false, ['receive', 'send']),
+    stop_tracing(Data),
     ok.
 
 %%%======================
 %%% handle_event: Traces
 %%%======================
-
 
 %% Casts are ignored
 handle_event(info,
@@ -68,7 +66,6 @@ handle_event(info,
              _State,
              _Data) ->
     keep_state_and_data;
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -255,8 +252,7 @@ handle_event(internal, refresh_state, {refresh_state, NewState}, Data) ->
 %%%======================
 
 handle_event({call, From}, stop, _State, Data) ->
-    #{worker := Worker} = Data,
-    erlang:trace(Worker, false, ['receive', 'send']),
+    stop_tracing(Data),
     {keep_state_and_data, {reply, From, ok}};
 
 handle_event(_Kind, _Ev, _State, _Data) ->
@@ -268,3 +264,8 @@ handle_event(_Kind, _Ev, _State, _Data) ->
 
 mon_of(#{mon_reg := MonReg}, To) ->
     mon_reg:mon_of(MonReg, To).
+
+stop_tracing(Data) ->
+    #{worker := Worker} = Data,
+    catch erlang:trace(Worker, false, ['receive', 'send']),
+    ok.

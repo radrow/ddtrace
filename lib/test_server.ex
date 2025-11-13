@@ -1,6 +1,6 @@
 defmodule DDTrace.TestServer do
   use GenServer
-  # alias :ddmon, as: GenServer
+  alias :ddmon, as: GenServer
 
   def start_link(id, kind, opts) do
     GenServer.start_link(__MODULE__, {id, kind, opts}, opts)

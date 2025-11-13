@@ -147,8 +147,8 @@ run_scenario(Scenario, Opts) ->
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  %% {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_ddmon_tracer}]),
-                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_tracer}]),
+                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_ddmon_tracer}]),
+                  %% {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_tracer}]),
 
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -211,8 +211,8 @@ run_scenario(Scenario, Opts) ->
                          end,
                      Mon = mon_reg:mon_of(MonReg, SessionInitProc),
                      RD = ddtrace:subscribe_deadlocks(Mon),
-                     %% R = ddmon:send_request_report(SessionInitProc, {SessionId, Session}),
-                     R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
+                     R = ddmon:send_request_report(SessionInitProc, {SessionId, Session}),
+                     %% R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
                      
                      ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, SessionInitProc, Mon, RD}, ReqIds),
                      gen_server:reqids_add(RD, {deadlock, SessionId, R}, ReqIds1)
@@ -365,8 +365,8 @@ reduce_remaining(Remaining, SessionId, Mode) ->
     
     case NewMode of
         reply -> Remaining -- [SessionId];
-        deadlock -> Remaining -- [SessionId];
         confirmed_deadlock -> Remaining -- [SessionId];
+        %% deadlock -> Remaining -- [SessionId];
         _ ->
              Remaining
     end.
