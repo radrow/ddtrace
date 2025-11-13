@@ -225,7 +225,7 @@ run_scenario(Scenario, Opts) ->
     catch E:EE ->
             {_, _, FSS1} = depidify(#{}, 0, FScenario),
             io:format("FSCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
-            io:format("Error while receiving responses: ~p:~p~n~p\n", [E, EE]),
+            io:format("Error while receiving responses: ~p:~p\n", [E, EE]),
             error(E)
     end,
     timer:sleep(500),
@@ -268,7 +268,7 @@ run_scenario(Scenario, Opts) ->
      || {SessionId, Mode} <- ets:tab2list(get(status_ets)),
         Mode =/= reply, 
         Mode =/= confirmed_deadlock,
-        Mode =/= deadlock,
+        %% Mode =/= deadlock,
         true
     ],
     ets:delete(get(status_ets)),
@@ -300,18 +300,14 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) when Time < 0 ->
 receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
     Res = time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end),
     case Res of
-        %% {TimeD, {{error, {{{calling_self, _}, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
-        %%     Remaining1 = reduce_remaining(Remaining, _SessionId, ddmon_deadlock),
-        %%     receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
-        %% {TimeD, {{error, {{_Err, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
-        %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
-        %% {TimeD, {{error, {_Err, _Pid}}, {deadlock, _SessionId, _}, Reqs1}} ->
-        %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+        {TimeD, {{error, {{_Err, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
+            receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+        {TimeD, {{error, {normal, _Pid}}, {deadlock, _SessionId, _}, _Reqs1}} ->
+            receive_responses(Reqs0, Remaining, Time - TimeD, Deadlocks);
         %% {TimeD, {{error, _E}, _L, Reqs1}} ->
         %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
             
         {_, no_request} when Deadlocks =:= [] ->
-            io:format("SUBITO\n"),
             {ok, Reqs0};
         {_, no_request} ->
             {{deadlock, Deadlocks}, Reqs0};
@@ -320,9 +316,6 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
         {TimeD, {{reply, {'$ddmon_deadlock_spread', _DL}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
             Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock),
             receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
-        %% {TimeD, {{reply, {_, _, deadlock_self}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
-        %%     Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock),
-        %%     receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
         {TimeD, {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
             ddtrace:unsubscribe_deadlocks(M),
             Remaining1 = reduce_remaining(Remaining, SessionId, reply),
@@ -636,10 +629,8 @@ get_results(Current, Queue, CurrSize, Max, Printer, Acc) ->
                     [Size] = [S || {Ww, S} <- Current, Ww =:= W],
                     Printer ! {update, W, -Size, down},
                     io:format(standard_error, "Worker ~p crashed: ~p\n", [W, E]),
-                    %% erlang:garbage_collect(W, [{type, minor}]),
                     get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, Acc);
                 {success, _Ref, W, Type, Size, Stats, Res} ->
-                    %% erlang:garbage_collect(W, [{type, minor}]),
                     get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, [{Type, Size, Stats, Res}|Acc])
             end;
         false ->

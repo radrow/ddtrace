@@ -86,10 +86,6 @@ defmodule DDTrace.TestServer do
             :shutdown
           :exit, {:noproc, _} ->
             :noproc
-          :exit, {:calling_self, info} ->
-             :deadlock_self
-          :exit, {{{:calling_self, info}, _}, _} ->
-            :erlang.error({:calling_self, info})
         end
       [var | next] when is_atom(var) ->
         case Map.get(vars, var, :none) do
