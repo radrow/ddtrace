@@ -1,4 +1,6 @@
 -module(scenario).
+%% @doc """ Module to run SRPC scenarios for testing deadlock detection and
+%% tracing. Not an official part of DDTrace. Not my finest code, either."""
 
 -export([grid_printer/2]).
 -export([run/1, run/2]).
@@ -54,11 +56,21 @@ fix_scenario(Map, Scenario) ->
     ].
 
 
+%% Essentially the opposite of `fix_scenario`. Replaces PIDs with indices and
+%% removes unnecessary bloat.
 depidify(Map, Feed, Pid) when is_pid(Pid) ->
     case maps:find(Pid, Map) of
         {ok, I} -> {Map, Feed, I};
         error -> {maps:put(Pid, Feed, Map), Feed + 1, Feed}
     end;
+depidify(Map, Feed, {{X}}) ->
+    depidify(Map, Feed, {X});
+depidify(Map, Feed, [X]) ->
+    depidify(Map, Feed, X); 
+depidify(Map, Feed, [H|T]) when H =:= [];
+                                H =:= {};
+                                H =:= {wait, 0} ->
+    depidify(Map, Feed, T);
 depidify(Map, Feed, [H|T]) ->
     {Map1, Feed1, H1} = depidify(Map, Feed, H),
     {Map2, Feed2, T1} = depidify(Map1, Feed1, T),
@@ -69,7 +81,6 @@ depidify(Map, Feed, T) when is_tuple(T) ->
     {M1, F1, list_to_tuple(L1)};
 depidify(Map, Feed, X) ->
     {Map, Feed, X}.
-
 
 
 %% Estimates (poorly) how many actors there are in a scenario
@@ -235,7 +246,7 @@ run_scenario(Scenario, Opts) ->
         R -> R
     catch E:EE ->
             {_, _, FSS1} = depidify(#{}, 0, FScenario),
-            io:format("FSCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
+            io:format(" SCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
             io:format("Error while receiving responses: ~p:~p\n", [E, EE]),
             error(E)
     end,
@@ -275,7 +286,7 @@ run_scenario(Scenario, Opts) ->
     unlink(Supervisor),
     exit(Supervisor, shutdown),
 
-    [ io:format("~p: ~p~n\n\n\n\n\n\n", [SessionId, Mode])
+    [ io:format("BAD RESULT ~p: ~p~n\n\n\n\n\n\n", [SessionId, Mode])
      || {SessionId, Mode} <- ets:tab2list(get(status_ets)),
         Mode =/= reply, 
         Mode =/= confirmed_deadlock,
@@ -287,7 +298,7 @@ run_scenario(Scenario, Opts) ->
     case Result of
         {timeout, _} ->
             {_, _, FSS} = depidify(#{}, 0, FScenario),
-            io:format("SCENARIO\n\n~p\n\n\n\n\n\n", [FSS]);
+            io:format("TIMEOUT FOR SCENARIO\n\n~p\n\n\n\n\n\n", [FSS]);
         _ -> ok
     end,
 
@@ -324,7 +335,7 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks, Opts) ->
             {{deadlock, Deadlocks}, Reqs0};
         {_, timeout} ->
             {{timeout, Remaining}, Reqs0};
-        {TimeD, {{reply, {'$ddmon_deadlock_spread', _DL}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
+        {TimeD, {{reply, {'$ddmon_deadlock_spread', _DL}}, {reply, SessionId, _P, _M, _ReqDead}, Reqs1}} ->
             Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock, Opts),
             receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks, Opts);
         {TimeD, {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
@@ -382,14 +393,6 @@ reduce_remaining(Remaining, SessionId, Mode, Opts) ->
         _ ->
              Remaining
     end.
-        
-    %% case lists:member(SessionId, Remaining) of
-    %%     true -> Remaining -- [SessionId];
-    %%     false when Mode =:= reply ->
-    %%         error({duplicated_reply, SessionId});
-    %%     _ ->
-    %%         Remaining
-    %% end.
 
 %% Parse scenario together with in-file options
 parse_scenario(Test) ->
@@ -529,14 +532,6 @@ gen_gen(conditional, Size) ->
             || I <- lists:seq(1, 1)
           ]
      ).
-    %% scenario_gen:generate(
-    %%   [ {envelope, I,
-    %%      { lists:seq(I * GroupSize, I * GroupSize + GroupSize - 1)
-    %%      , [{target, Target}, {min_len, MinLen}]
-    %%      }
-    %%     }
-    %%     || I <- lists:seq(1, Groups)
-    %%   ]).
 
 run_bench(Bench, Opts) ->
     %% io:format("\n\nGEN: ~p\n\n", [Scens]),
@@ -599,15 +594,6 @@ print_grid(Ws, ?GRID_WIDTH) ->
 print_grid([{_W, S}|Ws], I) ->
     io_lib:format(" ~s", [ansi_color:render(blob_format(S))]) ++
         print_grid(Ws, I + 1).
-
-%% print_size(Size, MaxSize) ->
-%%     Width = max(1, ?GRID_WIDTH * 2 - 4),
-%%     Percent = (Width * Size) div (MaxSize * 2 - 4),
-%%     Free = Width - Percent,
-%%     io:format("\r~s\r>>~s~s<<\n", [ lists:flatten([" " || _ <- lists:seq(1, Width + 4)])
-%%                                 , lists:flatten(["-" || _ <- lists:seq(1, Percent)])
-%%                                 , lists:flatten([if Free < 0 -> "~"; true -> " " end || _ <- lists:seq(1, abs(Free))])
-%%                                 ]).
 
 clean_grid(Ws) ->
     Height = ((maps:size(Ws) - 1) div ?GRID_WIDTH)
@@ -678,7 +664,7 @@ run_many(Bench, Opts) ->
                         Printer ! {update, self(), 0, busy},
                         {Log, Result} = run_scenario(Scenario, SOpts),
                         Printer ! {update, self(), -Size, case Result of ok -> done; {deadlock, _} -> dead; {timeout, _} -> time end},
-                        Stats = [], %% Stats = logging:log_stats(Log),
+                        Stats = logging:log_stats(Log),
                         logging:delete(),
                         Self ! {success, Ref, self(), Type, Size, Stats, Result}
                 end),
@@ -704,27 +690,20 @@ run_many(Bench, Opts) ->
 
     {ok, Log} = file:open(binary:bin_to_list(LogFile), [write]),
 
-    io:format(Log, "run,time,type,size,total,sent,inits,mon_mon,proc_mon,mon_proc,proc_proc,queries,replies,probes,success,deadlock\n", []),
-    [ io:format(Log, "~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p,~p\n",
-                [I,Time,Type,Size,Total,Sent,Inits,MonMon,ProcMon,MonProc,ProcProc,Queries,Replies,Probes,
-                 case Result of {timeout, _} -> 2; {deadlock, _} -> 1; ok -> 0 end, Deadlocks])
-      || {I, {Type, Size,
-              #{total := Total,
-                sent := Sent,
-                inits := Inits,
-                mon_mon := MonMon,
-                proc_mon := ProcMon,
-                mon_proc := MonProc,
-                proc_proc := ProcProc,
-                queries := Queries,
-                replies := Replies,
-                probes := Probes,
-                unlocks := _Unlocks,
-                locks := _Locks,
-                deadlocks := Deadlocks,
-                picks := _Picks,
-                time := Time
-               }, Result}} <- lists:enumerate(Stats)
+    Cols = [run,time,type,size,total,sent,recv,inits,queries,replies,notifs,probes,success,deadlock],
+    ColsFormat = string:join([atom_to_list(C) || C <- Cols], ",") ++ "\n",
+    ValsFormat = string:join(["~p" || _ <- Cols], ",") ++ "\n",
+    io:format(Log, ColsFormat, []),
+    [begin 
+         Vals = [ case Col of 
+                      success ->  case Result of {timeout, _} -> 2; {deadlock, _} -> 1; ok -> 0 end;
+                      _ -> maps:get(Col, ValMap#{type=>Type, size=>Size, run=>I})
+                  end 
+                  || Col <- Cols
+                ],
+         io:format(Log, ValsFormat, Vals)
+     end
+     || {I, {Type, Size, ValMap, Result}} <- lists:enumerate(Stats)
     ],
     case LogFile of
         <<"/dev/stdout">> -> ok;

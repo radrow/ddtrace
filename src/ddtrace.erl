@@ -88,9 +88,11 @@ terminate(_Reason, State, Data) ->
     erlang:demonitor(ErlMon, [flush]),
     case State of
         ?wait_mon(_, _) ->
-            io:format("~p: Terminating while waiting for monitor notification~n\n\n\n", [self()]);
+            %% io:format("~p: Terminating while waiting for monitor notification~n\n\n\n", [self()]);
+            ok;
         ?wait_proc(_, _, _) ->
-            io:format("~p: Terminating while waiting for process trace~n\n\n\n", [self()]);
+            %% io:format("~p: Terminating while waiting for process trace~n\n\n\n", [self()]);
+            ok;
         _ ->
             ok
     end,
@@ -100,8 +102,7 @@ terminate(_Reason, State, Data) ->
 %%% handle_event: All-time interactions
 %%%======================
 
-%% This is used allow the debug tracer (one that traces the monitor, not
-%% gen_server) to log state transitions
+%% Wait for the tracer to deliver all traces before changing state.
 handle_event(enter, _OldState, _NewState, _Data) ->
     deliver_traces(_Data),
     keep_state_and_data;
@@ -122,7 +123,6 @@ handle_event({call, From}, stop_tracer, _State, Data) ->
 %% The worker has attempted a call to itself. When this happens, no actual
 %% message is sent. We fake the call message to "detect" the deadlock.
 handle_event(info, {'DOWN', _ErlMon, process, Pid, {calling_self, _}}, _State, Data = #data{worker = Pid}) ->
-    io:format("AAAAA\n"),
     handle_recv(Data#data.worker, ?QUERY_INFO(make_ref()), Data),
     keep_state_and_data;
 %% The worker process has died.
@@ -251,12 +251,19 @@ handle_event(_Kind, _Msg, _State, _Data) ->
 %%% Monitor user API
 %%%======================
 
+%% Stops tracing for the monitored process. This does not terminate the tracing
+%% process itself, just stops listening to subsequent events.
 stop_tracer(Mon) ->
     gen_statem:call(Mon, stop_tracer).
 
+%% Sends a gen_statem request which will be replied when a deadlock is detected.
+%% Useful for simultaneous waiting for either a response from the gen_server or a
+%% deadlock.
 subscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, subscribe).
 
+%% Sends a gen_statem request to abandon a deadlock subscription. Once
+%% processed, the previous subscription will not be replied to.
 unsubscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, unsubscribe).
 
@@ -264,6 +271,7 @@ unsubscribe_deadlocks(Mon) ->
 %%% Internal Helper Functions
 %%%======================
 
+%% Handle receive trace.
 handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
     state_wait(From, ReqId, Data);
 handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
@@ -271,6 +279,7 @@ handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     state_unlock(Data).
 
+%% Handle send trace.
 handle_send(_To, ?QUERY_INFO(ReqId), Data) ->
     state_lock(ReqId, Data);
 handle_send(To, ?RESP_INFO(_ReqId), Data) ->
@@ -291,6 +300,9 @@ state_lock(ReqId, Data) ->
 state_deadlock(DL, Data) ->
     call_mon_state(?DEADLOCK_PROP(DL), Data).
 
+%% Send monitor notification to another monitor. The [To] should refer to the
+%% worker process, not the monitor directly. If [To] is not monitored, the
+%% function does nothing.
 send_notif(To, MsgInfo, Data) ->
     Mon = mon_of(Data, To),
     case Mon of
@@ -302,16 +314,19 @@ send_notif(To, MsgInfo, Data) ->
     end.
 
 
+%% Send a call message to the monitor state process and handle the response.
 call_mon_state(Msg, Data = #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
     handle_mon_state_response(Resp, Data),
     Data.
 
 
+%% Send a cast message to the monitor state process.
 cast_mon_state(Msg, #data{mon_state = Pid}) ->
     gen_server:cast(Pid, Msg).
 
 
+%% Handle reponse of the monitoring algorithm. Execute all scheduled sends.
 handle_mon_state_response(ok, _Data) ->
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
@@ -322,14 +337,18 @@ handle_mon_state_response({send, Sends}, _Data) ->
     ],
     ok.
 
+%% Make sure that all traces have been delivered before proceeding.
 deliver_traces(Data) ->
     Worker = Data#data.worker,
     TRef = erlang:trace_delivered(Worker),
     receive {trace_delivered, Worker, TRef} -> ok end.
 
-mon_of(Data, To) ->
-    mon_reg:mon_of(Data#data.mon_register, To).
+%% Inspect the monitor of a process.
+mon_of(Data, Pid) ->
+    mon_reg:mon_of(Data#data.mon_register, Pid).
 
+%% Check if shutdown reason was caused by a (possibly remote) deadlock caused by
+%% a call to self.
 is_self_loop({calling_self, _}) ->
     true;
 is_self_loop({E, _}) ->

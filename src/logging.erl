@@ -8,7 +8,7 @@
 
 -export([ log_terminate/0, log_deadlocks/1, log_scenario/2, log_timeout/1
         , log_result/1
-        , log_trace/1, log_trace/2
+        , log_trace/1, log_trace/2, log_stats/1
         ]).
 
 -define(LOG_SILENT, '$logging_silent').
@@ -176,7 +176,6 @@ c_timeout(Remaining) ->
       [c_who(SessionId) || SessionId <- Remaining]
     ].
 
-c_reqid(ReqId) -> c_thing(ReqId);
 c_reqid(ReqId) ->
     I = index(ReqId, reqid),
     {[white_l, bold, italic], "i" ++ integer_to_list(I)}.
@@ -295,7 +294,7 @@ c_event(?DEADLOCK_PROP(DL)) ->
     [{[red, bold], " D "}, c_lock_list(DL)];
 c_event({state, St}) ->
     c_instate(St);
-c_event(T) ->
+c_event(_T) ->
     silent.
     %% c_thing(T).
 
@@ -321,6 +320,83 @@ c_trace(InitT, Time, Who, What) ->
             , c_by(Who, F)
             ]
     end.
+
+
+class_who(E) ->
+    case type(E) of
+        A when is_atom(A) ->
+            A;
+        {A, _I} when is_atom(A) -> A;
+        _X -> unknown
+    end.
+
+ev_class({{Time, TimeX}, Who, Ev}) when is_integer(Time), is_integer(TimeX) ->
+    [{by, class_who(Who)} | ev_class(Ev)];
+ev_class({cast, Msg, _State}) ->
+    ev_class(Msg);
+ev_class({send, {notif, To, MsgInfo}}) ->
+    [send, {to, class_who(To)}, notif | ev_class(MsgInfo)];
+ev_class({Kind, _Ev, _State}) when Kind =:= internal; Kind =:= cast ->
+    [];
+ev_class(?RECV_INFO(MsgInfo)) ->
+    [recv, trace | ev_class(MsgInfo)];
+ev_class(?SEND_INFO(To, MsgInfo)) ->
+    [send, {to, class_who(To)}, trace | ev_class(MsgInfo)];
+ev_class(?QUERY_INFO(_)) ->
+    [query];
+ev_class(?RESP_INFO(_)) ->
+    [reply];
+ev_class(?NOTIFY(_From, MsgInfo)) ->
+    [recv, notif | ev_class(MsgInfo)];
+ev_class(?PROBE(_Probe, _L)) ->
+    [recv, probe];
+ev_class({enter, _OldState, _NewState}) ->
+    [state];
+ev_class({'DOWN', _, process, _Pid, _Reason}) ->
+    [];
+ev_class({info, Ev, _State}) when element(1, Ev) =:= trace_ts ->
+    [];
+ev_class({{call, _}, _Ev, _State}) ->
+    [];
+ev_class(?DEADLOCK_PROP(_DL)) ->
+    [];
+ev_class({state, St}) ->
+    [state | ev_class(St)];
+ev_class({deadlock, _}) ->
+    [deadlocked];
+ev_class({locked, _}) ->
+    [locked];
+ev_class(unlocked) ->
+    [unlocked];
+ev_class(_) ->
+    [].
+
+log_stats(Log0) ->
+    Log = [L || L <- Log0, L =/= ignore],
+    Classes = lists:map(fun ev_class/1, Log),
+
+    Count = fun FCount(L) when is_list(L) ->
+                    CF = lists:filter(fun(Cs) -> lists:all(fun(C) -> lists:member(C, Cs) end, L) end, Classes),
+                    length(CF);
+                FCount(A) when is_atom(A) ->
+                    FCount([A])
+            end,
+
+    #{total => length(Classes),
+      sent => Count([send, trace]),
+      recv => Count([recv, trace]),
+      inits => Count([send, trace, {by, 'I'}]) + Count([send, trace, {to, 'I'}]),
+      queries => Count([recv, trace, query]),
+      replies => Count([recv, trace, reply]),
+      notifs => Count([recv, notif]),
+      probes => Count([recv, probe]),
+      locks => Count([state, locked]),
+      unlocks => Count([state, unlocked]),
+      deadlock => Count([state, deadlocked]),
+      time => 
+          case lists:last(Log) of {{LTime, _}, _, _} -> LTime end -
+          case hd(Log) of {{FTime, _}, _, _} -> FTime end
+     }.
 
 log_trace(T) ->
     log_trace(0, T).

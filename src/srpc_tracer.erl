@@ -1,30 +1,33 @@
 -module(srpc_tracer).
-%% @doc """
-%% Module to trace a generic server in order of SRPC state transitions. 
-%% """
+%% @doc """ Module to trace a generic server for SRPC events. Because raw
+%% tracing can mess up the order of events (especially between 'send' and
+%% 'receive'), this module tracks SRPC state to defer ones that obviously came
+%% too early. For example, a response to a query that hasn't been observed yet
+%% will be postponed until the query trace arrives. Without this, the monitoring
+%% algorithm gets confused. """
 
 -behaviour(gen_statem).
 
 -include("ddtrace.hrl").
 
--export([start_link/3]).
+-export([start_link/2]).
 -export([init/1, callback_mode/0]).
 -export([handle_event/4, terminate/3]).
 
-start_link(Worker, Monitor, MonReg) ->
-    gen_statem:start_link(?MODULE, [Worker, Monitor, MonReg], []).
+start_link(Worker, MonReg) ->
+    gen_statem:start_link(?MODULE, [Worker, MonReg], []).
 
 callback_mode() ->
     handle_event_function.
 
-init([Worker, Monitor, MonReg]) ->
+init([Worker, MonReg]) ->
     init_trace(Worker),
     process_flag(trap_exit, true),
     erlang:monitor(process, Worker),
 
     Data = 
      #{worker => Worker,
-       monitor => Monitor,
+       monitor => mon_of(Worker, MonReg),
        mon_reg => MonReg,
        requests => #{}
       },
@@ -53,6 +56,10 @@ terminate(_Reason, _State, Data) ->
     stop_tracing(Data),
     ok.
 
+%%%======================
+%%% handle_event: Process exit
+%%%======================
+
 handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason},
              _State,
              Data) ->
@@ -60,8 +67,21 @@ handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason},
     keep_state_and_data;
 
 %%%======================
-%%% handle_event: Traces
+%%% handle_event: Translating traces to SRPC events
 %%%======================
+
+%% Casts are ignored. This needs to be explicit, otherwise we get a match with
+%% call responses.
+handle_event(info,
+             {trace_ts, _Worker, 'receive', {'$gen_cast', _}, _Ts},
+             _State,
+             _Data) ->
+    keep_state_and_data;
+handle_event(info,
+             {trace_ts, _Worker, 'send', {'$gen_cast', _}, _To, _Ts},
+             _State,
+             _Data) ->
+    keep_state_and_data;
 
 %% Send query
 handle_event(info,
@@ -125,10 +145,10 @@ handle_event(info,
 
 %% The gen_server is either gonna crash or handle this somehow. It definitely
 %% won't change its SRPC state.
-handle_event(info, {trace_ts, Worker, 'send_to_non_existing_process', _, To, _},
+handle_event(info, {trace_ts, _Worker, 'send_to_non_existing_process', _, _To, _},
              _State, 
              _Data) ->
-    io:format("~p: send_to_non_existing_process (~p) trace ignored~n", [Worker, To]),
+    %% io:format("~p: send_to_non_existing_process (~p) trace ignored~n", [_Worker, _To]),
     keep_state_and_data;
 
 
@@ -138,13 +158,15 @@ handle_event(info, Trace, _State, _Data) when element(1, Trace) =:= trace_ts;
     keep_state_and_data;
 
 %%%======================
-%%% handle_event: Events
+%%% handle_event: SRPC events
 %%%======================
 
+%% Send query
 handle_event(internal, Ev = ?SEND_INFO(_To, ?QUERY_INFO(ReqId)), unlocked, Data) ->
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, {locked, ReqId}, Data};
 
+%% Send response
 handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) ->
     #{requests := Requests} = Data,
     case maps:get(ReqId, Requests, undefined) of
@@ -157,6 +179,7 @@ handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) 
             {keep_state, Data1}
     end;
 
+%% Receive query
 handle_event(internal, Ev = ?RECV_INFO(?QUERY_INFO(ReqId)), State, Data) ->
     gen_statem:cast(maps:get(monitor, Data), Ev),
     #{requests := Requests} = Data,
@@ -165,22 +188,25 @@ handle_event(internal, Ev = ?RECV_INFO(?QUERY_INFO(ReqId)), State, Data) ->
     %% Trigger state refresh to retry postponed events
     {next_state, state_change, Data1, [{next_event, internal, {refresh_state, State}}]};
 
+%% Receive response
 handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data) ->
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, unlocked, Data};
-
-%% Forced state change to retry postponed events
-handle_event(internal, {refresh_state, NewState}, state_change, Data) ->
-    {next_state, NewState, Data};
 
 %%%======================
 %%% handle_event: Control
 %%%======================
 
+%% Forced state change to retry postponed events
+handle_event(internal, {refresh_state, NewState}, state_change, Data) ->
+    {next_state, NewState, Data};
+
+%% Stop tracer
 handle_event({call, From}, stop, _State, Data) ->
     stop_tracing(Data),
     {keep_state_and_data, {reply, From, ok}};
 
+%% We postpone unexpected events naively trusting that no one is trolling us.
 handle_event(_Kind, _Ev, _State, _Data) ->
     {keep_state_and_data, postpone}.
 
