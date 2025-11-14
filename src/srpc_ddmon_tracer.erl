@@ -12,12 +12,12 @@
 -export([handle_event/4, terminate/3]).
 
 start_link(Worker, MonReg) ->
-    gen_statem:start_link(?MODULE, [Worker, MonReg], []).
+    gen_statem:start_link(?MODULE, {Worker, MonReg}, []).
 
 callback_mode() ->
     handle_event_function.
 
-init([Worker, MonReg]) ->
+init({Worker, MonReg}) ->
     init_trace(Worker),
     process_flag(trap_exit, true),
     erlang:monitor(process, Worker),
