@@ -129,9 +129,11 @@ handle_event(info, {'DOWN', _ErlMon, process, Pid, {calling_self, _}}, _State, D
 handle_event(info, {'DOWN', ErlMon, process, Pid, Reason}, _State, Data = #data{worker = Pid}) ->
     case is_self_loop(Reason) of
         true ->
+            %% It was because it depended on someone who make a call to itself.
             handle_recv(Data#data.worker, ?QUERY_INFO(make_ref()), Data),
             keep_state_and_data;
         false ->
+            %% Normal termination: clean up and stop.
             erlang:demonitor(ErlMon, [flush]),
             {stop, normal, Data}
     end;

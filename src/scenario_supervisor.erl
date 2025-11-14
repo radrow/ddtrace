@@ -8,5 +8,9 @@ start_link() ->
     supervisor:start_link(?MODULE, []).
 
 init([]) ->
-    %% ignore.
-    {ok, {#{strategy => one_for_one, intensity => 5, period => 10}, []}}.
+    Settings = #{ strategy => one_for_one
+                , intensity => 5
+                , period => 10
+                , auto_shutdown => never
+                },
+    {ok, {Settings, []}}.

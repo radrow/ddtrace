@@ -4,9 +4,6 @@ defmodule DDTrace.Main do
     Usage: #{Path.basename(__ENV__.file)} FILE [OPTIONS]
     Options:
     \t--timeout\tSets timeout for the simulation. If not provided or set to 0, it is estimated by the script.
-    \t--trace-proc\tTrace events in monitored services
-    \t--trace-mon\tTrace events in monitored services (default)
-    \t--trace-int\tTrace internal events (default)
     \t--live-log\tPrint logs from the tracer instead of retroactively
     \t--log-timestamp\tInclude time in the printed log
     \t--indent\tHow many tabs should log cells be separated with; 0 means no tabulation (default 4)
@@ -14,8 +11,6 @@ defmodule DDTrace.Main do
     \t--stats-csv\tOutput stats file in CSV format
     \t--seed\tRNG seed (default unset)
     \t--silent\tDo not print the trace (default unset)
-    \t--probe-delay\tWhether to send probes with a delay. 0 means no delay, but asynchronous. -1 (default) means no delay.
-    \t--unmonitored\tRuns services as regular generic servers
     \t--ddmon\tUses ddmon for cross-check
     Prefix options with "no-" to disable them, eg. "--no-trace-mon"
     """
@@ -30,9 +25,7 @@ defmodule DDTrace.Main do
 
   defp parse_args() do
     args = System.argv()
-    switches = [trace_proc: :boolean,
-                trace_mon: :boolean,
-                trace_int: :boolean,
+    switches = [
                 live_log: :boolean,
                 log_timestamp: :boolean,
                 help: :boolean,
@@ -41,9 +34,7 @@ defmodule DDTrace.Main do
                 csv: :string,
                 stats_csv: :string,
                 seed: :integer,
-                probe_delay: :integer,
                 silent: :boolean,
-                unmonitored: :boolean,
                 ddmon: :boolean
                ]
     {opts, args, bad} = OptionParser.parse(args, strict: switches)

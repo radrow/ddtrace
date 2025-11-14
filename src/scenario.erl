@@ -65,12 +65,12 @@ depidify(Map, Feed, Pid) when is_pid(Pid) ->
     end;
 depidify(Map, Feed, {{X}}) ->
     depidify(Map, Feed, {X});
-depidify(Map, Feed, [X]) ->
-    depidify(Map, Feed, X); 
 depidify(Map, Feed, [H|T]) when H =:= [];
                                 H =:= {};
                                 H =:= {wait, 0} ->
     depidify(Map, Feed, T);
+%% depidify(Map, Feed, [H|T]) when not is_list(T) ->
+%%     depidify(Map, Feed, [H, T]);
 depidify(Map, Feed, [H|T]) ->
     {Map1, Feed1, H1} = depidify(Map, Feed, H),
     {Map2, Feed2, T1} = depidify(Map1, Feed1, T),
@@ -139,11 +139,11 @@ run_scenario(Scenario, Opts) ->
             true -> srpc_ddmon_tracer
         end,
 
-    {ok, Supervisor} = scenario_supervisor:start_link(),
 
     GsModule = 'Elixir.DDTrace.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
 
+    {ok, Supervisor} = scenario_supervisor:start_link(),
     {ok, MonReg} = mon_reg:start_link(),
 
     {LogKnown, LogFresh} = logging:mk_ets(),
@@ -161,7 +161,7 @@ run_scenario(Scenario, Opts) ->
                   ChildSpec =
                       #{id => I,
                         start => {GsModule, start_link, [I, Args, []]},
-                        restart => transient,
+                        restart => temporary,
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
@@ -242,17 +242,21 @@ run_scenario(Scenario, Opts) ->
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
     InitIdSet = [SessionId || {SessionId, _} <- FScenario],
-    Result = try receive_responses(Reqs, InitIdSet, Timeout, Opts) of
-        R -> R
-    catch E:EE ->
-            {_, _, FSS1} = depidify(#{}, 0, FScenario),
-            io:format(" SCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
-            io:format("Error while receiving responses: ~p:~p\n", [E, EE]),
-            error(E)
-    end,
+    Result = 
+        try receive_responses(Reqs, InitIdSet, Timeout, Opts)
+        catch E:EE ->
+                {_, _, FSS1} = depidify(#{}, 0, FScenario),
+                io:format(" SCENARIO:\n ~p\n\n\n\n\n\n", [FSS1]),
+                io:format("Error while receiving responses: ~p:~p\n", [E, EE]),
+                error(E)
+        end,
     timer:sleep(500),
     
-    Log = tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)]),
+    Log = try tracer:finish(Tracer, [M || {_, {M, _P}} <- maps:to_list(ProcMap)])
+          catch Eee:EEee ->
+              io:format("\n\n\n\n\n\n\nError while finishing tracing: ~p:~p\n", [Eee, EEee]),
+              []
+          end,
 
     case proplists:get_value(stats_csv, Opts, false) of
         false -> ok;
@@ -279,7 +283,8 @@ run_scenario(Scenario, Opts) ->
     logging:log_result(Result),
     
     [ begin
-          catch ddtrace:stop_tracer(M)
+          catch ddtrace:stop_tracer(M),
+          unlink(M)
       end
       ||  {_, {M, _P}} <- maps:to_list(ProcMap)
     ],
@@ -322,7 +327,7 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks, Opts) when Time < 0 ->
 receive_responses(Reqs0, Remaining, Time, Deadlocks, Opts) ->
     Res = time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end),
     case Res of
-        {TimeD, {{error, {{_Err, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
+        {TimeD, {{error, {_Err, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
             receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks, Opts);
         {TimeD, {{error, {normal, _Pid}}, {deadlock, _SessionId, _}, _Reqs1}} ->
             receive_responses(Reqs0, Remaining, Time - TimeD, Deadlocks, Opts);
@@ -626,7 +631,7 @@ get_results(Current, Queue, CurrSize, Max, Printer, Acc) ->
                 {'DOWN', _, process, W, E} when E =/= normal ->
                     [Size] = [S || {Ww, S} <- Current, Ww =:= W],
                     Printer ! {update, W, -Size, down},
-                    io:format(standard_error, "Worker ~p crashed: ~p\n", [W, E]),
+                    io:format(standard_error, "Worker ~p crashed: ~p\n\n\n\n\n\n", [W, E]),
                     get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, Acc);
                 {success, _Ref, W, Type, Size, Stats, Res} ->
                     get_results(Current -- [{W, Size}], Queue, CurrSize - Size, Max, Printer, [{Type, Size, Stats, Res}|Acc])
