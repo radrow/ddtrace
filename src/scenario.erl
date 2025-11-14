@@ -121,6 +121,13 @@ scenario_time(Scenario) ->
 run_scenario(Scenario, Opts) ->
     Init = self(),
 
+    OptDDMon = proplists:get_value(ddmon, Opts, false),
+    TracerMod =
+        case OptDDMon of
+            false -> srpc_tracer;
+            true -> srpc_ddmon_tracer
+        end,
+
     {ok, Supervisor} = scenario_supervisor:start_link(),
 
     GsModule = 'Elixir.DDTrace.TestServer',
@@ -147,8 +154,7 @@ run_scenario(Scenario, Opts) ->
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_ddmon_tracer}]),
-                  %% {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, srpc_tracer}]),
+                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, TracerMod}]),
 
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -211,8 +217,13 @@ run_scenario(Scenario, Opts) ->
                          end,
                      Mon = mon_reg:mon_of(MonReg, SessionInitProc),
                      RD = ddtrace:subscribe_deadlocks(Mon),
-                     R = ddmon:send_request_report(SessionInitProc, {SessionId, Session}),
-                     %% R = gen_server:send_request(SessionInitProc, {SessionId, Session}),
+                     
+                     case OptDDMon of
+                         false ->
+                             R = gen_server:send_request(SessionInitProc, {SessionId, Session});
+                         true -> 
+                             R = ddmon:send_request_report(SessionInitProc, {SessionId, Session})
+                     end,
                      
                      ReqIds1 = gen_server:reqids_add(R, {reply, SessionId, SessionInitProc, Mon, RD}, ReqIds),
                      gen_server:reqids_add(RD, {deadlock, SessionId, R}, ReqIds1)
@@ -220,7 +231,7 @@ run_scenario(Scenario, Opts) ->
     Reqs = lists:foldl(Folder, gen_server:reqids_new(), FScenario),
 
     InitIdSet = [SessionId || {SessionId, _} <- FScenario],
-    Result = try receive_responses(Reqs, InitIdSet, Timeout) of
+    Result = try receive_responses(Reqs, InitIdSet, Timeout, Opts) of
         R -> R
     catch E:EE ->
             {_, _, FSS1} = depidify(#{}, 0, FScenario),
@@ -268,7 +279,7 @@ run_scenario(Scenario, Opts) ->
      || {SessionId, Mode} <- ets:tab2list(get(status_ets)),
         Mode =/= reply, 
         Mode =/= confirmed_deadlock,
-        %% Mode =/= deadlock,
+        (OptDDMon orelse Mode =/= deadlock),
         true
     ],
     ets:delete(get(status_ets)),
@@ -283,27 +294,27 @@ run_scenario(Scenario, Opts) ->
     {Log, Result}.
 
 %% Wait for all sessions to terminate, or timeout
-receive_responses(Reqs0, Remaining, Time) ->
+receive_responses(Reqs0, Remaining, Time, Opts) ->
     put(status_ets, ets:new(status_ets, [])),
     
-    {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time, []),
+    {Result, _Reqs1} = receive_responses(Reqs0, Remaining, Time, [], Opts),
     %% gen_server:wait_response(_Reqs1, 2000, true),
 
     Result.
-receive_responses(Reqs, [], _, Deadlocks) ->
+receive_responses(Reqs, [], _, Deadlocks, _Opts) ->
     case Deadlocks of
         [] -> {ok, Reqs};
         _ -> {{deadlock, Deadlocks}, Reqs}
     end;
-receive_responses(Reqs0, Remaining, Time, Deadlocks) when Time < 0 ->
-    receive_responses(Reqs0, Remaining, 0, Deadlocks);
-receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
+receive_responses(Reqs0, Remaining, Time, Deadlocks, Opts) when Time < 0 ->
+    receive_responses(Reqs0, Remaining, 0, Deadlocks, Opts);
+receive_responses(Reqs0, Remaining, Time, Deadlocks, Opts) ->
     Res = time_ms(fun() -> gen_server:wait_response(Reqs0, Time, true) end),
     case Res of
         {TimeD, {{error, {{_Err, _Stack}, _Pid}}, {reply, _SessionId, _P, _M, _ReqDead}, Reqs1}} ->
-            receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
+            receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks, Opts);
         {TimeD, {{error, {normal, _Pid}}, {deadlock, _SessionId, _}, _Reqs1}} ->
-            receive_responses(Reqs0, Remaining, Time - TimeD, Deadlocks);
+            receive_responses(Reqs0, Remaining, Time - TimeD, Deadlocks, Opts);
         %% {TimeD, {{error, _E}, _L, Reqs1}} ->
         %%     receive_responses(Reqs1, Remaining, Time - TimeD, Deadlocks);
             
@@ -314,18 +325,19 @@ receive_responses(Reqs0, Remaining, Time, Deadlocks) ->
         {_, timeout} ->
             {{timeout, Remaining}, Reqs0};
         {TimeD, {{reply, {'$ddmon_deadlock_spread', _DL}}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
-            Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock),
-            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
+            Remaining1 = reduce_remaining(Remaining, SessionId, ddmon_deadlock, Opts),
+            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks, Opts);
         {TimeD, {{reply, _R}, {reply, SessionId, _P, M, _ReqDead}, Reqs1}} ->
             ddtrace:unsubscribe_deadlocks(M),
-            Remaining1 = reduce_remaining(Remaining, SessionId, reply),
-            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks);
+            Remaining1 = reduce_remaining(Remaining, SessionId, reply, Opts),
+            receive_responses(Reqs1, Remaining1, Time - TimeD, Deadlocks, Opts);
         {TimeD, {{reply, {deadlock, DL}}, {deadlock, SessionId, _ReqReply}, Reqs1}} ->
-            Remaining1 = reduce_remaining(Remaining, SessionId, deadlock),
-            receive_responses(Reqs1, Remaining1, Time - TimeD, [DL | Deadlocks])
+            Remaining1 = reduce_remaining(Remaining, SessionId, deadlock, Opts),
+            receive_responses(Reqs1, Remaining1, Time - TimeD, [DL | Deadlocks], Opts)
     end.
 
-reduce_remaining(Remaining, SessionId, Mode) ->
+reduce_remaining(Remaining, SessionId, Mode, Opts) ->
+    OptDDMon = proplists:get_value(ddmon, Opts, false),
     PrevMode = case ets:lookup(get(status_ets), SessionId) of [] -> none; [{_, M}] -> M end,
     NewMode = 
         case {PrevMode, Mode} of
@@ -366,7 +378,7 @@ reduce_remaining(Remaining, SessionId, Mode) ->
     case NewMode of
         reply -> Remaining -- [SessionId];
         confirmed_deadlock -> Remaining -- [SessionId];
-        %% deadlock -> Remaining -- [SessionId];
+        deadlock when not OptDDMon -> Remaining -- [SessionId];
         _ ->
              Remaining
     end.
