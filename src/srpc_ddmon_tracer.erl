@@ -7,18 +7,22 @@
 
 -include("ddtrace.hrl").
 
--export([start_link/3]).
+-export([start_link/2]).
 -export([init/1, callback_mode/0]).
 -export([handle_event/4, terminate/3]).
 
-start_link(Worker, Monitor, MonReg) ->
-    gen_statem:start_link(?MODULE, [Worker, Monitor, MonReg], []).
+start_link(Worker, MonReg) ->
+    gen_statem:start_link(?MODULE, [Worker, MonReg], []).
 
 callback_mode() ->
     handle_event_function.
 
-init([Worker, Monitor, MonReg]) ->
+init([Worker, MonReg]) ->
     init_trace(Worker),
+    process_flag(trap_exit, true),
+    erlang:monitor(process, Worker),
+
+    Monitor = mon_reg:mon_of(MonReg, Worker),
 
     Data = 
      #{worker => Worker,
@@ -50,6 +54,16 @@ init_trace(Worker) ->
 terminate(_Reason, _State, Data) ->
     stop_tracing(Data),
     ok.
+
+%%%======================
+%%% handle_event: Process exit
+%%%======================
+
+handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason},
+             _State,
+             Data) ->
+    stop_tracing(Data),
+    keep_state_and_data;
 
 %%%======================
 %%% handle_event: Traces

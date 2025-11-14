@@ -69,7 +69,7 @@ init({Worker, MonRegister, Opts}) when is_pid(Worker) ->
 
     mon_reg:set_mon(MonRegister, Worker, self()),
     {ok, MonState} = StateMod:start_link(Worker, MonRegister),
-    {ok, Tracer} = TracerMod:start_link(Worker, self(), MonRegister),
+    {ok, Tracer} = TracerMod:start_link(Worker, MonRegister),
 
     Data = #data{ worker = Worker
                 , erl_monitor = ErlMon
