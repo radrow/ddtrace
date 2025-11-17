@@ -133,14 +133,16 @@ run_scenario(Scenario, Opts) ->
     Init = self(),
 
     OptDDMon = proplists:get_value(ddmon, Opts, false),
-    TracerMod =
-        case OptDDMon of
-            false -> srpc_tracer;
-            true -> srpc_ddmon_tracer
-        end,
+    
+    case OptDDMon of
+        false -> 
+            TracerMod = srpc_tracer,
+            GsModule = 'Elixir.DDTrace.TestServer';
+        true -> 
+            TracerMod = srpc_ddmon_tracer,
+            GsModule = 'Elixir.DDTrace.TestServerInstrumented'
+    end,
 
-
-    GsModule = 'Elixir.DDTrace.TestServer',
     {module, _} = code:ensure_loaded(GsModule),
 
     {ok, Supervisor} = scenario_supervisor:start_link(),

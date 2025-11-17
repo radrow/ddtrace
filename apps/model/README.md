@@ -125,8 +125,18 @@ docker build -t ddtrace .
 docker run --rm ddtrace ./ddtrace ./appls/model/priv/scenarios/example.conf
 ```
 
-See `./ddtrace --help` for more information about the CLI interface.
+Note that you may occasionally see error logs of crashed generic servers. If
+those are due to self-inflicted deadlocks (i.e. a server calls itself), then a
+`calling_self` error is thrown and the system terminated. The scenario evaluator
+considers that and does not kill the system, awaiting a deadlock verdict. In
+other words, this is fine.
 
+The `ddtrace` script allows cross-checking the results against DDMon. If the
+script is run with the `--ddmon` flag, then DDTrace will be set on top of a
+DDMon-monitored system. The testing script will then verify that both monitoring
+frameworks agree on the verdict.
+
+See `./ddtrace --help` for more information about the CLI interface.
 
 ## Reading the log
 
