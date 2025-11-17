@@ -5,11 +5,12 @@ defmodule MicrochipFactory.MixProject do
     [
       app: :microchip_factory,
       version: "0.1.0",
+      build_path: "../../_build",
+      config_path: "../../config/config.exs",
+      deps_path: "../../deps",
+      lockfile: "../../mix.lock",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
-      compilers: [:erlang] ++ Mix.compilers(),
-      erlc_paths: ["src"],
-      erlc_include_path: "src",
       deps: deps()
     ]
   end
@@ -22,6 +23,8 @@ defmodule MicrochipFactory.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:ddtrace, in_umbrella: true}
+    ]
   end
 end

@@ -8,23 +8,31 @@ DDTrace is a tool for asynchronous distributed deadlock detection in
 The three top-level applications are:
 
 - `apps/ddtrace` – the main DDTrace library.
-- `apps/model` – the scenario generator, tracer tooling, and supporting modules
-  used for exercising the library.
-- `apps/ddtrace_cli` – the Elixir escript wrapper that drives scenarios via the
-  model application.
+- `apps/model` – the scenario generator, tracer tooling, and Elixir CLI used to
+  exercise the library.
+- `apps/microchip_factory` – an example `gen_server`-based Elixir application
+  which shows DDTrace in a slightly more realistic setup. Refer to its README
+  for more details.
 
-To build the tooling run:
+To build the tooling with the testing models run:
 
 ```
 mix deps.get
 mix escript.build
 ```
 
-The escript is written to `./ddtrace`. Example usage:
+The scenario testing escript is written to `./ddtrace`. Example usage:
 
 ```
 ./ddtrace apps/model/priv/scenarios/deadlock.conf
 ```
+
+The microchip factory example can be run as follows:
+
+``` 
+mix run -e "MicrochipFactory.start_two(true)"
+```
+
 
 ## Prerequisites
 

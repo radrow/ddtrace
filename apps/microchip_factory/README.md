@@ -6,12 +6,12 @@ well-audited microchip production.
 ## Project structure
 
 - `lib/`
-  - `microchip_factory.ex` — script executing the experiment
+  - `microchip_factory.ex` — script executing the experiment and wiring ddtrace instrumentation
   - `microchip_factory/`
     - `application.ex` — Elixir app and supervisor
     - `producer.ex` — the producer generic server
     - `inspector` — the inspector generic server
-- `src/` — DDMon library
+- `deps` — declared in `mix.exs`, pulls `:ddtrace` from the umbrella
 
 ## Services
 
@@ -40,16 +40,19 @@ for their references.
 
 ### Two producers, two inspectors
 
-Run the test:
+Run the test from the umbrella root (or `cd apps/microchip_factory` first):
 
 ```
-mix run -e "MicrochipFactory.start_two"
+mix run -e "MicrochipFactory.start_two(true)"
 ```
 
 The file `lib/microchip_factory.ex` describes a case of two producers and two
 inspectors. `Producer` 1 asks `Inspector` 1 for audits; similarly, `Producer` 2
 asks `Inspector` 2. However, `Inspector` 1 uses `Producer` **2** as its
 reference; analogously, `Inspector` 2 refers to `Producer` 1 in its audits.
+When the `monitored` flag is true we start ddtrace monitors around both
+producers and subscribe to deadlock notifications so the demo prints a
+trace-backed deadlock graph instead of the old ddmon report.
 
 The test begins by requesting both producers to produce microchip. This, depending
 on the order of events, may result in either successful creation of two
@@ -57,16 +60,17 @@ vegetables, or a deadlock.
 
 ### Many producers, three inspectors
 
-Run the test:
+Run the test from the umbrella root (or `cd apps/microchip_factory` first):
 
 ```
-mix run -e "MicrochipFactory.start_many"
+mix run -e "MicrochipFactory.start_many(true)"
 ```
 
 This case is different from the one above in that it has over 90 producers which
 call each other to obtain necessary microchip components. The system
 occasionally runs into deadlocks, but this time the deadlocks are of variable
-sizes.
+sizes. With ddtrace enabled the example subscribes to deadlock updates for each
+producer so you can see which requests are stuck without relying on ddmon.
 
 Producers are divided into 3 categories: `:a`, `:b` and `:c`. Within each
 category, there are producers indexed from `0` to `30`. `n`-th producer (except

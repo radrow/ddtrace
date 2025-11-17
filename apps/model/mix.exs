@@ -14,7 +14,8 @@ defmodule Model.MixProject do
       start_permanent: Mix.env() == :prod,
       erlc_paths: ["src"],
       erlc_include_path: "include",
-      deps: deps()
+      deps: deps(),
+      escript: escript()
     ]
   end
 
@@ -25,6 +26,15 @@ defmodule Model.MixProject do
   defp deps do
     [
       {:ddtrace, in_umbrella: true}
+    ]
+  end
+
+  defp escript do
+    [
+      name: "ddtrace",
+      main_module: DDTrace.Main,
+      emu_args: "-sname ddtrace +P 10485760",
+      path: Path.expand("../../ddtrace", __DIR__)
     ]
   end
 end

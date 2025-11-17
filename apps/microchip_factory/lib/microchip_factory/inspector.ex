@@ -1,6 +1,5 @@
 defmodule MicrochipFactory.Inspector do
   use GenServer
-  # alias :ddmon, as: GenServer
 
   def start_link(name, reference_microchip) do
     GenServer.start_link(__MODULE__, {reference_microchip, name}, name: name)

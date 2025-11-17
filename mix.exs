@@ -13,7 +13,7 @@ defmodule DdtraceUmbrella.MixProject do
 
   defp aliases do
     [
-      "escript.build": ["do --app ddtrace_cli escript.build"]
+      "escript.build": ["do --app model escript.build"]
     ]
   end
 end

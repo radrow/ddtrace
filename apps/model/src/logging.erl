@@ -293,7 +293,7 @@ c_event({{call, _}, _Ev, _State}) ->
 c_event(?DEADLOCK_PROP(DL)) ->
     [{[red, bold], " D "}, c_lock_list(DL)];
 c_event({state, St}) ->
-    c_instate(St);
+    ["~>" , c_instate(St)];
 c_event(_T) ->
     silent.
     %% c_thing(T).
