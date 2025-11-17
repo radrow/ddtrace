@@ -223,7 +223,9 @@ report_deadlock(DL, State) ->
      || From <- State#state.subscribers
     ],
     
-    %% Set deadlocked flag. Clear subscribers (so they are notified only once).
+    %% Set deadlocked flag. Clear subscribers, so they are notified only once.
+    %% We do it directly from the state, because we don't care about message
+    %% ordering anymore (we are deadlocked, and will remain so).
     State1 = State#state{
                deadlocked = {true, DL},          
                subscribers = []
