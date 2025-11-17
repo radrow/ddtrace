@@ -3,6 +3,29 @@
 DDTrace is a tool for asynchronous distributed deadlock detection in
 `gen_server`-based systems.
 
+## Repository layout
+
+The three top-level applications are:
+
+- `apps/ddtrace` – the main DDTrace library.
+- `apps/model` – the scenario generator, tracer tooling, and supporting modules
+  used for exercising the library.
+- `apps/ddtrace_cli` – the Elixir escript wrapper that drives scenarios via the
+  model application.
+
+To build the tooling run:
+
+```
+mix deps.get
+mix escript.build
+```
+
+The escript is written to `./ddtrace`. Example usage:
+
+```
+./ddtrace apps/model/priv/scenarios/deadlock.conf
+```
+
 ## Prerequisites
 
 - Erlang/OTP 26

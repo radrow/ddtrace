@@ -95,3 +95,4 @@ render_prop(Props) when is_list(Props) ->
     "\e[" ++ string:join(lists:map(fun str/1, Props), ";") ++ "m";
 render_prop(Prop) ->
     render_prop([Prop]).
+

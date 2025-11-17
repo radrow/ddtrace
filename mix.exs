@@ -1,22 +1,19 @@
-defmodule DDTrace do
+defmodule DdtraceUmbrella.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :ddtrace,
+      apps_path: "apps",
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
-      compilers: [:erlang] ++ Mix.compilers(),
-      deps: [],
-      escript: [
-        main_module: DDTrace.Main,
-        emu_args: "-sname ddtrace +P 10485760"
-      ]
+      aliases: aliases()
     ]
   end
 
-  def application do
-    [extra_applications: [:logger]]
+  defp aliases do
+    [
+      "escript.build": ["do --app ddtrace_cli escript.build"]
+    ]
   end
 end

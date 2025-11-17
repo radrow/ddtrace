@@ -1,7 +1,7 @@
 -module(gen_monitored).
 -behaviour(gen_server).
 
--include("ddmon.hrl").
+-include_lib("model/include/ddmon.hrl").
 
 %% API
 -export([start_link/3]).

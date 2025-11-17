@@ -1,7 +1,7 @@
 -module(ddmon).
 -behaviour(gen_statem).
 
--include("ddmon.hrl").
+-include_lib("model/include/ddmon.hrl").
 
 -define(PROBE_DELAY, '$ddmon_probe_delay').
 

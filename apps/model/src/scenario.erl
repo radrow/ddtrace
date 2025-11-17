@@ -5,7 +5,7 @@
 -export([grid_printer/2]).
 -export([run/1, run/2]).
 
--include("ddtrace.hrl").
+-include_lib("ddtrace/include/ddtrace.hrl").
 
 
 %% Turns a session description into something evaluable:

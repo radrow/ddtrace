@@ -5,7 +5,7 @@
 
 -behaviour(gen_statem).
 
--include("ddtrace.hrl").
+-include_lib("ddtrace/include/ddtrace.hrl").
 
 -export([start_link/2]).
 -export([init/1, callback_mode/0]).

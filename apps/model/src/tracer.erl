@@ -1,6 +1,6 @@
- -module(tracer).
+-module(tracer).
 
- -include("ddtrace.hrl").
+-include_lib("ddtrace/include/ddtrace.hrl").
 
  -export([ start_link/1, start_link/2
          , finish/1, finish/2
