@@ -8,6 +8,7 @@ rebar.lock
 
 output
 ddtrace
+!ddtrace/
 
 # rebar 2.x
 .rebar
