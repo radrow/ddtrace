@@ -10,7 +10,7 @@
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
--export([terminate/3]).
+-export([terminate/2,terminate/3]).
 
 -export([handle_event/4]).
 
@@ -85,6 +85,8 @@ callback_mode() ->
     %% it unless it causes performance issues.
     [handle_event_function, state_enter].
 
+terminate(State, Data) ->
+    terminate(shutdown, State, Data);
 terminate(_Reason, State, Data) ->
     ErlMon = Data#data.erl_monitor,
     erlang:demonitor(ErlMon, [flush]),
