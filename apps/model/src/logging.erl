@@ -248,10 +248,14 @@ c_lock_list([First|L]) ->
 
 c_state(?synced) ->
     {[green, bold, invert], " S "};
-c_state(?wait_proc(From, MsgInfo, _Rest)) -> 
+c_state(?wait_proc(From, MsgInfo)) -> 
     [{[yellow, bold, invert], " P "}, "(", c_who(From), " @ ", c_msg_info(MsgInfo), ")"];
-c_state(?wait_mon(MsgInfo, _Rest)) -> 
-    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfo), ")"].
+c_state(?wait_mon(MsgInfo)) -> 
+    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfo), ")"];
+c_state(?wait_mon_proc(MsgInfoMon, FromProc, MsgInfoProc)) -> 
+    [{[violet, bold, invert], " N "}, " (", c_msg_info(MsgInfoMon), 
+     "|", c_who(FromProc), " @ ", c_msg_info(MsgInfoProc),
+     ")"].
 
 c_instate({deadlock, DL}) ->
     [ {[red, bold, invert, blink], " D "}, "(", c_lock_list(DL), ")"];
