@@ -60,7 +60,6 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 
 init({Worker, MonRegister, Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
-    %% io:format("~p: Starting ddtrace for ~p~n", [self(), Worker]),
 
     TracerMod = proplists:get_value(tracer_mod, Opts, srpc_tracer),
     StateMod = proplists:get_value(state_mod, Opts, ddtrace_state),
@@ -86,20 +85,16 @@ callback_mode() ->
     [handle_event_function, state_enter].
 
 terminate(State, Data) ->
-    terminate(shutdown, State, Data);
-terminate(_Reason, State, Data) ->
+    terminate(shutdown, State, Data).
+terminate(Reason, _State, Data) ->
+    if Reason =:= normal; Reason =:= shutdown; element(1, Reason) =:= shutdown ->
+            ok;
+         true ->
+            Worker = Data#data.worker,
+            logger:error("~p: Monitored process died abnormally", [self(), Worker, Reason], #{module => ?MODULE, subsystem => ddtrace})
+    end,
     ErlMon = Data#data.erl_monitor,
     erlang:demonitor(ErlMon, [flush]),
-    case State of
-        ?wait_mon(_) ->
-            %% io:format("~p: Terminating while waiting for monitor notification~n\n\n", [self()]);
-            ok;
-        ?wait_proc(_, _) ->
-            %% io:format("~p: Terminating while waiting for process trace~n\n\n", [self()]);
-            ok;
-        _ ->
-            ok
-    end,
     ok.
 
 %%%======================
@@ -109,8 +104,24 @@ terminate(_Reason, State, Data) ->
 %% Wait for the tracer to deliver all traces to quit non-synced state asap..
 handle_event(enter, _OldState, ?synced, _Data) ->
     keep_state_and_data;
+handle_event(enter, _OldState, ?wait_mon(_), _Data) ->
+    TimeoutAction = {state_timeout, 1000, synchronisation},
+    {keep_state_and_data, [TimeoutAction]};
 handle_event(enter, _OldState, _NewState, _Data) ->
     deliver_traces(_Data),
+    keep_state_and_data;
+
+handle_event(state_timeout, synchronisation, ?wait_mon(MsgInfo), Data) ->
+    Worker = Data#data.worker,
+    logger:warning("~p: Waiting for notification for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
+    keep_state_and_data;
+handle_event(state_timeout, synchronisation, ?wait_mon_proc(MsgInfo, _, _), Data) ->
+    Worker = Data#data.worker,
+    logger:warning("~p: Waiting for notification for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
+    keep_state_and_data;
+handle_event(state_timeout, synchronisation, ?wait_proc(From, MsgInfo), Data) ->
+    Worker = Data#data.worker,
+    logger:warning("~p: Waiting for trace for too long: ~w / ~w", [Worker, From, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
     keep_state_and_data;
 
 handle_event({call, From}, subscribe, _State, Data) ->
@@ -309,7 +320,8 @@ send_notif(To, MsgInfo, Data) ->
         _ ->
             Worker = Data#data.worker,
             Msg = ?NOTIFY(Worker, MsgInfo),
-            gen_statem:cast(Mon, Msg)
+            gen_statem:cast(Mon, Msg),
+            ok
     end.
 
 

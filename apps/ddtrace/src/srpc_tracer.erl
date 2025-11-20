@@ -147,10 +147,10 @@ handle_event(info,
 
 %% The gen_server is either gonna crash or handle this somehow. It definitely
 %% won't change its SRPC state.
-handle_event(info, {trace_ts, _Worker, 'send_to_non_existing_process', _, _To, _},
+handle_event(info, {trace_ts, Worker, 'send_to_non_existing_process', _, To, _},
              _State, 
              _Data) ->
-    %% io:format("~p: send_to_non_existing_process (~p) trace ignored~n", [_Worker, _To]),
+    logging:warning("~p: send_to_non_existing_process (~p) trace ignored", [Worker, To], #{module => ?MODULE, subsystem => ddtrace}),
     keep_state_and_data;
 
 
