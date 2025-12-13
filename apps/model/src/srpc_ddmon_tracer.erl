@@ -168,7 +168,7 @@ handle_event(info,
     case mon_of(Data, From) of
         undefined ->
             %% If the sender is not being monitored, we fake monitor notification
-            FakeNotif = ?NOTIFY(From, ?QUERY_INFO(ReqId)),
+            FakeNotif = ?HERALD(From, ?QUERY_INFO(ReqId)),
             Monitor = maps:get(monitor, Data),
             gen_statem:cast(Monitor, FakeNotif);
         _Pid -> ok

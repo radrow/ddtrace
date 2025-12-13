@@ -282,7 +282,7 @@ c_event(?RECV_INFO(MsgInfo)) ->
     ["? ", c_msg_info(MsgInfo)];
 c_event(?SEND_INFO(To, MsgInfo)) ->
     [c_who(To), " ! ", c_msg_info(MsgInfo)];
-c_event(?NOTIFY(From, MsgInfo)) ->
+c_event(?HERALD(From, MsgInfo)) ->
     [c_who(From), " $? ", c_msg_info(MsgInfo)];
 c_event(?PROBE(Probe, _L)) ->
     ["? ", c_probe(Probe)];
@@ -350,7 +350,7 @@ ev_class(?QUERY_INFO(_)) ->
     [query];
 ev_class(?RESP_INFO(_)) ->
     [reply];
-ev_class(?NOTIFY(_From, MsgInfo)) ->
+ev_class(?HERALD(_From, MsgInfo)) ->
     [recv, notif | ev_class(MsgInfo)];
 ev_class(?PROBE(_Probe, _L)) ->
     [recv, probe];

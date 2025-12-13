@@ -211,20 +211,20 @@ handle_event(cast, ?RECV_INFO(_), _State, _Data) ->
 %% Monitor notification
     
 %% We were synced, so now we wait for process trace
-handle_event(cast, ?NOTIFY(From, MsgInfo), ?synced, Data) ->
+handle_event(cast, ?HERALD(From, MsgInfo), ?synced, Data) ->
     {next_state, ?wait_proc(From, MsgInfo), Data};
 
 %% Awaited notification
-handle_event(cast, ?NOTIFY(From, MsgInfo), ?wait_mon(MsgInfo), Data0) ->
+handle_event(cast, ?HERALD(From, MsgInfo), ?wait_mon(MsgInfo), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?synced, Data1};
 
-handle_event(cast, ?NOTIFY(From, MsgInfo), ?wait_mon_proc(MsgInfo, FromProc, MsgInfoProc), Data0) ->
+handle_event(cast, ?HERALD(From, MsgInfo), ?wait_mon_proc(MsgInfo, FromProc, MsgInfoProc), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?wait_proc(FromProc, MsgInfoProc), Data1};
 
 %% Unwanted notification: postpone
-handle_event(cast, ?NOTIFY(_From, _MsgInfoOther), _State, _Data) ->
+handle_event(cast, ?HERALD(_From, _MsgInfoOther), _State, _Data) ->
     {keep_state_and_data, postpone};
 
 %%%======================
@@ -319,7 +319,7 @@ send_notif(To, MsgInfo, Data) ->
         undefined -> ok;
         _ ->
             Worker = Data#data.worker,
-            Msg = ?NOTIFY(Worker, MsgInfo),
+            Msg = ?HERALD(Worker, MsgInfo),
             gen_statem:cast(Mon, Msg),
             ok
     end.

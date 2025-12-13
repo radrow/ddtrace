@@ -5,7 +5,7 @@
 -define(PROBE(Probe, Vis), {'$ddt_probe', Probe, Vis}).
 -define(QUERY_INFO(ReqId), {'$ddt_query', ReqId}).
 -define(RESP_INFO(ReqId), {'$ddt_reply', ReqId}).
--define(NOTIFY(From, MsgInfo), {'$ddt_notif', From, MsgInfo}).
+-define(HERALD(From, MsgInfo), {'$ddt_herald', From, MsgInfo}).
 -define(DEADLOCK_PROP(DL), {'$ddt_deadlock_prop', DL}).
 
 %% -define(GS_CALL_FROM(From, ReqId), {'$gen_call', {From, [alias|ReqId]}, _}).
