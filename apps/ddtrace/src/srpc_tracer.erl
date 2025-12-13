@@ -150,7 +150,7 @@ handle_event(info,
 handle_event(info, {trace_ts, Worker, 'send_to_non_existing_process', _, To, _},
              _State, 
              _Data) ->
-    logging:warning("~p: send_to_non_existing_process (~p) trace ignored", [Worker, To], #{module => ?MODULE, subsystem => ddtrace}),
+    logger:warning("~p: send_to_non_existing_process (~p) trace ignored", [Worker, To], #{module => ?MODULE, subsystem => ddtrace}),
     keep_state_and_data;
 
 
