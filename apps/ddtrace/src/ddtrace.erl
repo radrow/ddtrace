@@ -62,7 +62,7 @@ init({Worker, MonRegister, Opts}) when is_pid(Worker) ->
     process_flag(trap_exit, true),
 
     TracerMod = proplists:get_value(tracer_mod, Opts, srpc_tracer),
-    StateMod = proplists:get_value(state_mod, Opts, ddtrace_state),
+    StateMod = proplists:get_value(state_mod, Opts, ddtrace_detector),
     
     ErlMon = erlang:monitor(process, Worker),
 
