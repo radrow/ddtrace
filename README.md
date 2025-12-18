@@ -68,7 +68,7 @@ In order to receive a deadlock notification, the user needs to register itself
 as a subscriber to a particular monitor. One would normally subscribe to a
 monitor immediately after making a call, and unsubscribe upon receiving a
 response or deadlock notification. To subscribe to deadlocks, use the
-`ddmon:subscribe` function (use `ddmon:unsubscribe` to opt out). The
+`ddmon:subscribe_deadlocks` function (use `ddmon:unsubscribe_deadlocks` to opt out). The
 subscribtion function returns a request identifier that can be used in generic
 server's `reqid` or listened to directly via `gen_server:wait_response`.
 
@@ -85,7 +85,7 @@ server with DDTrace:
 {ok, M} = ddtrace:start_link(P, MonReg),
 
 %% Subscribe to deadlocks
-ReqM = ddtrace:subscribe_deadlocks(Mon),
+ReqM = ddtrace:subscribe_deadlocks(M),
 
 %% Call the service
 ReqP = gen_server:send_request(P, request)
