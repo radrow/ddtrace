@@ -167,8 +167,8 @@ The `<EVENT>` can be either of the following:
 - `X ? R(s)` — Received a receive-trace with a response from `X` in session `s`.
 - `X ! Q(s)` — Received a send-trace with a query to `X` in session `s`.
 - `X ! R(s)` — Received a send-trace with a response to `X` in session `s`.
-- `X $! i` — Sent a monitor notification to `X` with request ID `i`.
-- `X $? i` — Received a monitor notification from `X` with request ID `i`.
+- `X $! i` — Sent a monitor herald to `X` with request ID `i`.
+- `X $? i` — Received a monitor herald from `X` with request ID `i`.
 - `? p(i)` — Received a probe with request ID `i`.
 - `D (DL)` — Monitor detects a deadlock; `DL` is the list of services which form
   a deadlock cycle.
@@ -185,8 +185,8 @@ The `<STATE>` is defined as follows:
 - `S` — Synced
 - `P(X @ Q(i))` — Waiting for a process receive-trace with a query coming from `X` with request ID `i`
 - `P(X @ R(i))` — Waiting for a process receive-trace with a response coming from `X` with request ID `i`
-- `N(Q(i))` — Waiting for a monitor notification with a query and request ID `i`
-- `N(R(i))` — Waiting for a monitor notification with a response and request ID `i`
+- `N(Q(i))` — Waiting for a monitor herald with a query and request ID `i`
+- `N(R(i))` — Waiting for a monitor herald with a response and request ID `i`
 
 Erlang processes are identified as follows:
 

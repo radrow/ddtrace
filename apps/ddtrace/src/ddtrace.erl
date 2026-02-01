@@ -113,11 +113,11 @@ handle_event(enter, _OldState, _NewState, _Data) ->
 
 handle_event(state_timeout, synchronisation, ?wait_mon(MsgInfo), Data) ->
     Worker = Data#data.worker,
-    logger:warning("~p: Waiting for notification for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
+    logger:warning("~p: Waiting for herald for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
     keep_state_and_data;
 handle_event(state_timeout, synchronisation, ?wait_mon_proc(MsgInfo, _, _), Data) ->
     Worker = Data#data.worker,
-    logger:warning("~p: Waiting for notification for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
+    logger:warning("~p: Waiting for herald for too long: ~w", [Worker, MsgInfo], #{module => ?MODULE, subsystem => ddtrace}),
     keep_state_and_data;
 handle_event(state_timeout, synchronisation, ?wait_proc(From, MsgInfo), Data) ->
     Worker = Data#data.worker,
@@ -182,14 +182,14 @@ handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _), Data) ->
     send_notif(To, MsgInfo, Data),
     {keep_state, Data1};
 
-%% Awaiting notification: postpone
+%% Awaiting herald: postpone
 handle_event(cast, ?SEND_INFO(_, _), _State, _Data) ->
     {keep_state_and_data, postpone};
 
 %%%======================
 %% Receive trace
 
-%% We were synced, so now we wait for monitor notification
+%% We were synced, so now we wait for monitor herald
 handle_event(cast, ?RECV_INFO(MsgInfo), ?synced, Data) ->
     {next_state, ?wait_mon(MsgInfo), Data};
 
@@ -198,23 +198,23 @@ handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?synced, Data1};
 
-%% Unwanted process receive-trace. We wait for notification first, and then
+%% Unwanted process receive-trace. We wait for herald first, and then
 %% resume waiting for the process trace.
 handle_event(cast, ?RECV_INFO(MsgInfoNotif), ?wait_proc(From, MsgInfo), Data) when MsgInfoNotif =/= MsgInfo ->
     {next_state, ?wait_mon_proc(MsgInfoNotif, From, MsgInfo), Data};
 
-%% Awaiting notification: postpone
+%% Awaiting herald: postpone
 handle_event(cast, ?RECV_INFO(_), _State, _Data) ->
     {keep_state_and_data, postpone};
 
 %%%======================
-%% Monitor notification
+%% Monitor herald
     
 %% We were synced, so now we wait for process trace
 handle_event(cast, ?HERALD(From, MsgInfo), ?synced, Data) ->
     {next_state, ?wait_proc(From, MsgInfo), Data};
 
-%% Awaited notification
+%% Awaited herald
 handle_event(cast, ?HERALD(From, MsgInfo), ?wait_mon(MsgInfo), Data0) ->
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?synced, Data1};
@@ -223,7 +223,7 @@ handle_event(cast, ?HERALD(From, MsgInfo), ?wait_mon_proc(MsgInfo, FromProc, Msg
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?wait_proc(FromProc, MsgInfoProc), Data1};
 
-%% Unwanted notification: postpone
+%% Unwanted herald: postpone
 handle_event(cast, ?HERALD(_From, _MsgInfoOther), _State, _Data) ->
     {keep_state_and_data, postpone};
 
@@ -235,7 +235,7 @@ handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
-%% Handle probe while awaiting monitor notification (since probes come from
+%% Handle probe while awaiting monitor herald (since probes come from
 %% monitors). TODO: filter to make sure the probe comes from the right monitor
 %% only?
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_)), Data) ->
@@ -310,7 +310,7 @@ state_lock(ReqId, Data) ->
 state_deadlock(DL, Data) ->
     call_mon_state(?DEADLOCK_PROP(DL), Data).
 
-%% Send monitor notification to another monitor. The [To] should refer to the
+%% Send monitor herald to another monitor. The [To] should refer to the
 %% worker process, not the monitor directly. If [To] is not monitored, the
 %% function does nothing.
 send_notif(To, MsgInfo, Data) ->
