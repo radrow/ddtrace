@@ -21,6 +21,8 @@ callback_mode() ->
     handle_event_function.
 
 init({Worker, MonReg}) ->
+    process_flag(priority, low),
+
     init_trace(Worker),
     process_flag(trap_exit, true),
     erlang:monitor(process, Worker),

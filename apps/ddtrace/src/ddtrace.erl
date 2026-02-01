@@ -59,6 +59,7 @@ start_link(Worker, MonRegister, Opts, GenOpts) ->
 %%%======================
 
 init({Worker, MonRegister, Opts}) when is_pid(Worker) ->
+    process_flag(priority, low),
     process_flag(trap_exit, true),
 
     TracerMod = proplists:get_value(tracer_mod, Opts, srpc_tracer),

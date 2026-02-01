@@ -38,6 +38,8 @@ stop(Pid) ->
 %%%======================
 
 init([Worker, MonRegister]) ->
+    process_flag(priority, low),
+
     State = #state{
                worker = Worker,
                mon_register = MonRegister,
