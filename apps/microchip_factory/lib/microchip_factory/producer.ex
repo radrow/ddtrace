@@ -19,7 +19,7 @@ defmodule MicrochipFactory.Producer do
       chip.components
     end
 
-    microchip = %{metadata: state.metadata, components: Enum.sum(components) + 1}
+    microchip = %{metadata: state.metadata, components: Enum.sum(components) + 1, producer: state.self}
 
     log(state, "Producing microchip... asking #{MicrochipFactory.Inspector.format inspector} for audit")
     :ok = MicrochipFactory.Inspector.inspect_microchip(inspector, microchip)
