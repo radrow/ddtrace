@@ -173,13 +173,13 @@ handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
 %% Handle send trace in synced state
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
-    send_notif(To, MsgInfo, Data),
+    send_herald(To, MsgInfo, Data),
     {keep_state, Data1};
 
 %% Handle send trace while awaiting process trace
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_, _), Data) ->
     Data1 = handle_send(To, MsgInfo, Data),
-    send_notif(To, MsgInfo, Data),
+    send_herald(To, MsgInfo, Data),
     {keep_state, Data1};
 
 %% Awaiting herald: postpone
@@ -313,7 +313,7 @@ state_deadlock(DL, Data) ->
 %% Send monitor herald to another monitor. The [To] should refer to the
 %% worker process, not the monitor directly. If [To] is not monitored, the
 %% function does nothing.
-send_notif(To, MsgInfo, Data) ->
+send_herald(To, MsgInfo, Data) ->
     Mon = mon_of(Data, To),
     case Mon of
         undefined -> ok;

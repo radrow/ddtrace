@@ -274,7 +274,7 @@ c_msg_info(?QUERY_INFO(ReqId)) ->
 c_msg_info(?RESP_INFO(ReqId)) ->
     c_reply(ReqId).
 
-c_event({send, {notif, To, MsgInfo}}) ->
+c_event({send, {herald, To, MsgInfo}}) ->
     [c_who(To), " $! ", c_msg_info(MsgInfo)];
 c_event({Kind, Ev, State}) when Kind =:= internal; Kind =:= cast ->
     ["[", c_state(State), "]\t", c_event(Ev)];
@@ -338,8 +338,8 @@ ev_class({{Time, TimeX}, Who, Ev}) when is_integer(Time), is_integer(TimeX) ->
     [{by, class_who(Who)} | ev_class(Ev)];
 ev_class({cast, Msg, _State}) ->
     ev_class(Msg);
-ev_class({send, {notif, To, MsgInfo}}) ->
-    [send, {to, class_who(To)}, notif | ev_class(MsgInfo)];
+ev_class({send, {herald, To, MsgInfo}}) ->
+    [send, {to, class_who(To)}, herald | ev_class(MsgInfo)];
 ev_class({Kind, _Ev, _State}) when Kind =:= internal; Kind =:= cast ->
     [];
 ev_class(?RECV_INFO(MsgInfo)) ->
@@ -351,7 +351,7 @@ ev_class(?QUERY_INFO(_)) ->
 ev_class(?RESP_INFO(_)) ->
     [reply];
 ev_class(?HERALD(_From, MsgInfo)) ->
-    [recv, notif | ev_class(MsgInfo)];
+    [recv, herald | ev_class(MsgInfo)];
 ev_class(?PROBE(_Probe, _L)) ->
     [recv, probe];
 ev_class({enter, _OldState, _NewState}) ->
@@ -392,7 +392,7 @@ log_stats(Log0) ->
       inits => Count([send, trace, {by, 'I'}]) + Count([send, trace, {to, 'I'}]),
       queries => Count([recv, trace, query]),
       replies => Count([recv, trace, reply]),
-      notifs => Count([recv, notif]),
+      heralds => Count([recv, herald]),
       probes => Count([recv, probe]),
       locks => Count([state, locked]),
       unlocks => Count([state, unlocked]),

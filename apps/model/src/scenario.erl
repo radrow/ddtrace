@@ -697,7 +697,7 @@ run_many(Bench, Opts) ->
 
     {ok, Log} = file:open(binary:bin_to_list(LogFile), [write]),
 
-    Cols = [run,time,type,size,total,sent,recv,inits,queries,replies,notifs,probes,success,deadlock],
+    Cols = [run,time,type,size,total,sent,recv,inits,queries,replies,heralds,probes,success,deadlock],
     ColsFormat = string:join([atom_to_list(C) || C <- Cols], ",") ++ "\n",
     ValsFormat = string:join(["~p" || _ <- Cols], ",") ++ "\n",
     io:format(Log, ColsFormat, []),

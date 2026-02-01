@@ -46,7 +46,7 @@ config_tracer(Opts) ->
         logging:conf(Opts),
 
         erlang:trace_pattern(
-            {ddtrace, send_notif, 3},
+            {ddtrace, send_herald, 3},
             [ {['_', '_', '_'], [], [trace]} ],
             [local]
          ),
@@ -110,9 +110,9 @@ finish(Tracer, Tracees) ->
     end.
 
 handle({trace_ts, Who, 'call', 
-        {ddtrace, send_notif, [To, MsgInfo, _Data]},
+        {ddtrace, send_herald, [To, MsgInfo, _Data]},
         Time}) ->
-    {Time, Who, {send, {notif, To, MsgInfo}}};
+    {Time, Who, {send, {herald, To, MsgInfo}}};
 
 handle({trace_ts, Who, 'call', 
         {ddtrace, state_deadlock, [DL, _Data]},
