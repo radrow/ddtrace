@@ -1,6 +1,7 @@
 defmodule MicrochipFactory do
   @moduledoc false
 
+
   ### ==========================================================================
   ### Example interactions
   ### ==========================================================================
@@ -34,12 +35,14 @@ defmodule MicrochipFactory do
     ]
 
     result = do_calls(calls, timeout: 1_000, monitor_ctx: ctx)
+    
     print_result(result)
     cleanup_monitors(ctx)
 
     result
   end
 
+  
   @doc """
   Complex example with many producers and a few inspectors
   """
@@ -98,6 +101,7 @@ defmodule MicrochipFactory do
     result
   end
 
+  
   ### ==========================================================================
   ### Printing and initiating
   ### ==========================================================================
@@ -128,11 +132,13 @@ defmodule MicrochipFactory do
     end
   end
 
+  
   defp prepare_request(prod, insp, nil) do
     call_req = :gen_server.send_request(prod, {:produce_microchip, insp})
     %{call_req: call_req}
   end
 
+  
   defp prepare_request(prod, insp, %{monitors: monitors}) do
     prod_pid = GenServer.whereis(prod) || raise "unknown producer #{inspect(prod)}"
     monitor = Map.fetch!(monitors, prod_pid)
@@ -143,6 +149,7 @@ defmodule MicrochipFactory do
     %{call_req: call_req, deadlock_req: deadlock_req, monitor: monitor}
   end
 
+  
   defp await_response(req_info, timeout) do
     reqs0 = :gen_server.reqids_new()
     reqs1 = :gen_server.reqids_add(req_info.call_req, {:call, req_info}, reqs0)
@@ -156,6 +163,7 @@ defmodule MicrochipFactory do
     wait_for_response(reqs, req_info, timeout)
   end
 
+  
   defp wait_for_response(reqs, info, timeout) do
     case :gen_server.wait_response(reqs, timeout, true) do
       :timeout ->
@@ -183,7 +191,8 @@ defmodule MicrochipFactory do
     end
   end
 
-  defp setup_monitors(false, _pids), do: nil
+
+  defp setup_monitors(false, _pids), do: :nil
 
   defp setup_monitors(true, pids) do
     {:ok, mon_reg} = :mon_reg.start_link()
@@ -199,6 +208,7 @@ defmodule MicrochipFactory do
     %{mon_reg: mon_reg, monitors: monitors}
   end
 
+  
   defp cleanup_monitors(nil), do: :ok
 
   defp cleanup_monitors(%{mon_reg: mon_reg, monitors: monitors}) do
@@ -209,6 +219,7 @@ defmodule MicrochipFactory do
     :gen_server.stop(mon_reg)
   end
 
+  
   defp maybe_unsubscribe(%{monitor: monitor}) do
     :ddtrace.unsubscribe_deadlocks(monitor)
     :ok
@@ -216,6 +227,7 @@ defmodule MicrochipFactory do
 
   defp maybe_unsubscribe(_), do: :ok
 
+  
   defp print_result(result) do
     case result do
       {:deadlock, dl} ->
