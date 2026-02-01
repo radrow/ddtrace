@@ -92,7 +92,7 @@ terminate(Reason, _State, Data) ->
             ok;
          true ->
             Worker = Data#data.worker,
-            logger:error("~p: Monitored process died abnormally", [self(), Worker, Reason], #{module => ?MODULE, subsystem => ddtrace})
+            logger:error("~p: Monitored process ~p died abnormally: ~w", [self(), Worker, Reason], #{module => ?MODULE, subsystem => ddtrace})
     end,
     ErlMon = Data#data.erl_monitor,
     erlang:demonitor(ErlMon, [flush]),
