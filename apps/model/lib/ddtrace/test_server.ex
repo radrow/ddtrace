@@ -19,16 +19,16 @@ defmodule DDTrace.TestServer do
     {:ok, {:work, id}}
   end
 
-  def handle_call(:'$get_child', _from, state) do
+  def handle_call(:"$get_child", _from, state) do
     # Keep the scenario runner happy when monitoring is disabled
     {:reply, self(), state}
   end
 
-  def handle_call(:'$get_workers', _from, {:route, free, busy} = state) do
+  def handle_call(:"$get_workers", _from, {:route, free, busy} = state) do
     {:reply, free ++ busy, state}
   end
 
-  def handle_call(:'$get_workers', _from, {:work, _} = state) do
+  def handle_call(:"$get_workers", _from, {:work, _} = state) do
     {:reply, [], state}
   end
 
