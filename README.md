@@ -78,7 +78,7 @@ response or deadlock notification. To subscribe to deadlocks, use the
 subscribtion function returns a request identifier that can be used in generic
 server's `reqid` or listened to directly via `gen_server:wait_response`.
 
-The following snippet shows exemplifies how to monitor a single generic
+The following snippet exemplifies how to monitor a single generic
 server with DDTrace:
 
 ``` erlang
