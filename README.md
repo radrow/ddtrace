@@ -53,6 +53,12 @@ monitored.
 
 TODO: there is a chance that `gen_server:multi_call` would work, but this is to be investigated.
 
+### Tracing limitations
+
+`ddtrace` monitors employ the `trace` facility to oversee their `gen_server` instances. 
+Because Erlang allows at most one tracer for each process, this effectively prevents using
+`trace` to debug systems monitored by `ddtrace`. 
+
 ## Instrumenting generic servers with DDTrace
 
 A monitor is started via `ddtrace:start` or `ddtrace:start_link`. The PID of the
