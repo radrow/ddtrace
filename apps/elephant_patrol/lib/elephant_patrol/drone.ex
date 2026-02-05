@@ -6,8 +6,9 @@ defmodule ElephantPatrol.Drone do
   for permission to scare it off.
   """
   use GenServer
+  require Logger
 
-  defstruct [:elephant, :controller]
+  defstruct [:name, :elephant, :controller]
 
   # Client API
 
@@ -50,21 +51,28 @@ defmodule ElephantPatrol.Drone do
 
   @impl true
   def init(opts) do
+    name = Keyword.get(opts, :name, self())
     elephant = Keyword.fetch!(opts, :elephant)
     controller = Keyword.fetch!(opts, :controller)
-    {:ok, %__MODULE__{elephant: elephant, controller: controller}}
+    state = %__MODULE__{name: format_name(name), elephant: elephant, controller: controller}
+    Logger.info("[#{state.name}] 🚁 Drone initialized | elephant=#{inspect(elephant)} controller=#{inspect(controller)}")
+    {:ok, state}
   end
 
   @impl true
   def handle_call(:observe, _from, state) do
+    Logger.info("[#{state.name}] 🚁 Starting observation of elephant...")
     result = do_observe(state)
+    Logger.info("[#{state.name}] 🚁 Observation complete | result=#{inspect(result)}")
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
+    Logger.info("[#{state.name}] 🚁 Received confirmation request, checking elephant...")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
+    Logger.info("[#{state.name}] 🚁 Confirmation result | elephant_state=#{inspect(elephant_state)} is_destroying=#{is_destroying}")
     {:reply, is_destroying, state}
   end
 
@@ -73,17 +81,30 @@ defmodule ElephantPatrol.Drone do
   defp do_observe(state) do
     case ElephantPatrol.Elephant.get_state(state.elephant) do
       :calm ->
+        Logger.debug("[#{state.name}] 🚁 Elephant is calm, no action needed")
         {:ok, :calm}
 
       :destroying_crops ->
+        Logger.warning("[#{state.name}] 🚁 Elephant destroying crops! Requesting permission to scare...")
+        Logger.info("[#{state.name}] 🚁 Calling controller #{inspect(state.controller)} for scare approval")
+
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
+            Logger.info("[#{state.name}] 🚁 Permission APPROVED! Scaring elephant...")
             ElephantPatrol.Elephant.scare(state.elephant)
+            Logger.info("[#{state.name}] 🚁 Elephant scared off successfully")
             {:ok, :scared_off}
 
           :rejected ->
+            Logger.warning("[#{state.name}] 🚁 Permission REJECTED. Standing down.")
             {:ok, :not_approved}
         end
     end
   end
+
+  defp format_name(name) when is_atom(name), do: "Drone:#{name}"
+  defp format_name(pid) when is_pid(pid), do: "Drone:#{inspect(pid)}"
+  defp format_name({:via, _, name}), do: "Drone:#{inspect(name)}"
+  defp format_name({:global, name}), do: "Drone:#{inspect(name)}"
+  defp format_name(other), do: "Drone:#{inspect(other)}"
 end

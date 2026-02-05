@@ -6,8 +6,9 @@ defmodule ElephantPatrol.Controller do
   drone to confirm the sighting before approving the request.
   """
   use GenServer
+  require Logger
 
-  defstruct [:drone, :confirming_drone]
+  defstruct [:name, :drone, :confirming_drone]
 
   # Client API
 
@@ -40,19 +41,39 @@ defmodule ElephantPatrol.Controller do
 
   @impl true
   def init(opts) do
+    name = Keyword.get(opts, :name, self())
     drone = Keyword.fetch!(opts, :drone)
     confirming_drone = Keyword.fetch!(opts, :confirming_drone)
-    {:ok, %__MODULE__{drone: drone, confirming_drone: confirming_drone}}
+    state = %__MODULE__{name: format_name(name), drone: drone, confirming_drone: confirming_drone}
+    Logger.info("[#{state.name}] 🎮 Controller initialized | drone=#{inspect(drone)} confirming_drone=#{inspect(confirming_drone)}")
+    {:ok, state}
   end
 
   @impl true
   def handle_call(:request_scare, _from, state) do
+    Logger.info("[#{state.name}] 🎮 Received scare request from drone")
+    Logger.info("[#{state.name}] 🎮 Requesting confirmation from #{inspect(state.confirming_drone)}...")
+
     result =
       case ElephantPatrol.Drone.confirm_sighting(state.confirming_drone) do
-        true -> :approved
-        false -> :rejected
+        true ->
+          Logger.info("[#{state.name}] 🎮 Sighting CONFIRMED by confirming drone -> APPROVING scare")
+          :approved
+
+        false ->
+          Logger.warning("[#{state.name}] 🎮 Sighting NOT CONFIRMED by confirming drone -> REJECTING scare")
+          :rejected
       end
 
+    Logger.info("[#{state.name}] 🎮 Scare request decision: #{inspect(result)}")
     {:reply, result, state}
   end
+
+  # Private Functions
+
+  defp format_name(name) when is_atom(name), do: "Controller:#{name}"
+  defp format_name(pid) when is_pid(pid), do: "Controller:#{inspect(pid)}"
+  defp format_name({:via, _, name}), do: "Controller:#{inspect(name)}"
+  defp format_name({:global, name}), do: "Controller:#{inspect(name)}"
+  defp format_name(other), do: "Controller:#{inspect(other)}"
 end

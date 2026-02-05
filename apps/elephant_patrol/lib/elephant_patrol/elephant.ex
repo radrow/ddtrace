@@ -3,6 +3,9 @@ defmodule ElephantPatrol.Elephant do
   A GenServer representing an elephant that can either stay calm or destroy crops.
   """
   use GenServer
+  require Logger
+
+  defstruct [:name, :state]
 
   # Client API
 
@@ -45,27 +48,42 @@ defmodule ElephantPatrol.Elephant do
   # Server Callbacks
 
   @impl true
-  def init(_opts) do
-    {:ok, :calm}
+  def init(opts) do
+    name = Keyword.get(opts, :name, self())
+    state = %__MODULE__{name: format_name(name), state: :calm}
+    Logger.info("[#{state.name}] 🐘 Elephant initialized | state=:calm")
+    {:ok, state}
   end
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
+    Logger.debug("[#{state.name}] 🐘 State queried | state=#{inspect(state.state)}")
+    {:reply, state.state, state}
   end
 
   @impl true
-  def handle_cast(:stay_calm, _state) do
-    {:noreply, :calm}
+  def handle_cast(:stay_calm, state) do
+    Logger.info("[#{state.name}] 🐘 Staying calm | previous=#{inspect(state.state)} -> new=:calm")
+    {:noreply, %{state | state: :calm}}
   end
 
   @impl true
-  def handle_cast(:destroy_crops, _state) do
-    {:noreply, :destroying_crops}
+  def handle_cast(:destroy_crops, state) do
+    Logger.warning("[#{state.name}] 🐘 DESTROYING CROPS! | previous=#{inspect(state.state)} -> new=:destroying_crops")
+    {:noreply, %{state | state: :destroying_crops}}
   end
 
   @impl true
-  def handle_cast(:scare, _state) do
-    {:noreply, :calm}
+  def handle_cast(:scare, state) do
+    Logger.info("[#{state.name}] 🐘 Got scared! Calming down | previous=#{inspect(state.state)} -> new=:calm")
+    {:noreply, %{state | state: :calm}}
   end
+
+  # Private Functions
+
+  defp format_name(name) when is_atom(name), do: "Elephant:#{name}"
+  defp format_name(pid) when is_pid(pid), do: "Elephant:#{inspect(pid)}"
+  defp format_name({:via, _, name}), do: "Elephant:#{inspect(name)}"
+  defp format_name({:global, name}), do: "Elephant:#{inspect(name)}"
+  defp format_name(other), do: "Elephant:#{inspect(other)}"
 end
