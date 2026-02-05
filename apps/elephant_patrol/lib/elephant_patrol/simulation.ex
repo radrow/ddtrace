@@ -212,40 +212,71 @@ defmodule ElephantPatrol.Simulation do
 
   defp do_trigger_elephant do
     # Give some time for logs to flush
-    Process.sleep(500)
+    Process.sleep(1000)
 
     # Step 1: Check initial state
     Logger.info("📍 Step 1: Checking initial elephant state...")
+    Process.sleep(500)
     state = ElephantPatrol.Elephant.get_state(@elephant)
     Logger.info("📍 Elephant is currently: #{inspect(state)}")
-    Process.sleep(500)
+    Process.sleep(1000)
 
-    # Step 2: Drone1 observes - should see calm elephant
-    Logger.info("\n📍 Step 2: Drone1 observes the calm elephant...")
-    result1 = ElephantPatrol.Drone.observe(@drone1)
-    Logger.info("📍 Drone1 observation result: #{inspect(result1)}")
-    Process.sleep(500)
+    # Step 2: Elephant starts destroying crops!
+    Logger.info("""
 
-    # Step 3: Elephant starts destroying crops!
-    Logger.info("\n📍 Step 3: OH NO! The elephant starts destroying crops!")
+    ╔════════════════════════════════════════════════════════════╗
+    ║   💥 OH NO! THE ELEPHANT IS DESTROYING CROPS! 💥           ║
+    ╚════════════════════════════════════════════════════════════╝
+    """)
     ElephantPatrol.Elephant.destroy_crops(@elephant)
-    Process.sleep(500)
+    Process.sleep(1500)
 
-    # Step 4: Drone1 observes - should detect and request scare
-    Logger.info("\n📍 Step 4: Drone1 observes again...")
-    result2 = ElephantPatrol.Drone.observe(@drone1)
-    Logger.info("📍 Drone1 observation result: #{inspect(result2)}")
-    Process.sleep(500)
+    # Step 3: Both drones observe SIMULTANEOUSLY - this creates the deadlock!
+    Logger.info("""
 
-    # Step 5: Verify elephant is calm again
-    Logger.info("\n📍 Step 5: Verifying elephant state after intervention...")
-    final_state = ElephantPatrol.Elephant.get_state(@elephant)
-    Logger.info("📍 Elephant is now: #{inspect(final_state)}")
+    ╔════════════════════════════════════════════════════════════╗
+    ║   🚁 DISPATCHING BOTH DRONES SIMULTANEOUSLY...             ║
+    ╚════════════════════════════════════════════════════════════╝
+    """)
+    Process.sleep(1000)
+
+    # Spawn both observations simultaneously
+    task1 = Task.async(fn ->
+      Logger.info("🚁 [Task] Drone1 starting observation...")
+      result = ElephantPatrol.Drone.observe(@drone1)
+      Logger.info("🚁 [Task] Drone1 finished with: #{inspect(result)}")
+      result
+    end)
+
+    # Small delay to make logs clearer, but still simultaneous enough for deadlock
+    Process.sleep(100)
+
+    task2 = Task.async(fn ->
+      Logger.info("🚁 [Task] Drone2 starting observation...")
+      result = ElephantPatrol.Drone.observe(@drone2)
+      Logger.info("🚁 [Task] Drone2 finished with: #{inspect(result)}")
+      result
+    end)
+
+    Process.sleep(1000)
+    try do
+      result1 = Task.await(task1, 25_000)
+      result2 = Task.await(task2, 25_000)
+      Logger.info("📍 Results: Drone1=#{inspect(result1)}, Drone2=#{inspect(result2)}")
+    catch
+      :exit, _ ->
+        Logger.error("""
+
+        ╔════════════════════════════════════════════════════════════╗
+        ║   💀 TIMEOUT! Tasks did not complete.                      ║
+        ╚════════════════════════════════════════════════════════════╝
+        """)
+    end
 
     Logger.info("""
 
     ╔════════════════════════════════════════════════════════════╗
-    ║           🎉 ELEPHANT SECURED 🎉                           ║
+    ║           🎬 DEMONSTRATION COMPLETE                        ║
     ╚════════════════════════════════════════════════════════════╝
     """)
 

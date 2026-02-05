@@ -8,6 +8,10 @@ defmodule ElephantPatrol.Controller do
   use GenServer
   require Logger
 
+  # Magenta color for controllers
+  @color IO.ANSI.magenta()
+  @reset IO.ANSI.reset()
+
   defstruct [:name, :drone, :confirming_drone]
 
   # Client API
@@ -34,7 +38,7 @@ defmodule ElephantPatrol.Controller do
   - `:rejected` if the confirming drone does not confirm the sighting
   """
   def request_scare(controller) do
-    GenServer.call(controller, :request_scare)
+    GenServer.call(controller, :request_scare, 20_000)
   end
 
   # Server Callbacks
@@ -45,27 +49,31 @@ defmodule ElephantPatrol.Controller do
     drone = Keyword.fetch!(opts, :drone)
     confirming_drone = Keyword.fetch!(opts, :confirming_drone)
     state = %__MODULE__{name: format_name(name), drone: drone, confirming_drone: confirming_drone}
-    Logger.info("[#{state.name}] 🎮 Controller initialized | drone=#{inspect(drone)} confirming_drone=#{inspect(confirming_drone)}")
+    Logger.info("#{@color}[#{state.name}] 🎮 Controller initialized | drone=#{inspect(drone)} confirming_drone=#{inspect(confirming_drone)}#{@reset}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:request_scare, _from, state) do
-    Logger.info("[#{state.name}] 🎮 Received scare request from drone")
-    Logger.info("[#{state.name}] 🎮 Requesting confirmation from #{inspect(state.confirming_drone)}...")
+    Logger.info("#{@color}[#{state.name}] 🎮 Received scare request from drone#{@reset}")
+    
+    # Small delay to ensure both controllers receive requests before either tries to confirm
+    Process.sleep(500)
+    
+    Logger.info("#{@color}[#{state.name}] 🎮 Requesting confirmation from #{inspect(state.confirming_drone)}...#{@reset}")
 
     result =
       case ElephantPatrol.Drone.confirm_sighting(state.confirming_drone) do
         true ->
-          Logger.info("[#{state.name}] 🎮 Sighting CONFIRMED by confirming drone -> APPROVING scare")
+          Logger.info("#{@color}[#{state.name}] 🎮 Sighting CONFIRMED by confirming drone -> APPROVING scare#{@reset}")
           :approved
 
         false ->
-          Logger.warning("[#{state.name}] 🎮 Sighting NOT CONFIRMED by confirming drone -> REJECTING scare")
+          Logger.warning("#{@color}[#{state.name}] 🎮 Sighting NOT CONFIRMED by confirming drone -> REJECTING scare#{@reset}")
           :rejected
       end
 
-    Logger.info("[#{state.name}] 🎮 Scare request decision: #{inspect(result)}")
+    Logger.info("#{@color}[#{state.name}] 🎮 Scare request decision: #{inspect(result)}#{@reset}")
     {:reply, result, state}
   end
 

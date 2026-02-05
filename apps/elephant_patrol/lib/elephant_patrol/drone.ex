@@ -8,6 +8,10 @@ defmodule ElephantPatrol.Drone do
   use GenServer
   require Logger
 
+  # Cyan color for drones
+  @color IO.ANSI.cyan()
+  @reset IO.ANSI.reset()
+
   defstruct [:name, :elephant, :controller]
 
   # Client API
@@ -36,7 +40,7 @@ defmodule ElephantPatrol.Drone do
   - `{:ok, :not_approved}` if the controller did not approve scaring the elephant
   """
   def observe(drone) do
-    GenServer.call(drone, :observe)
+    GenServer.call(drone, :observe, 20_000)
   end
 
   @doc """
@@ -44,7 +48,7 @@ defmodule ElephantPatrol.Drone do
   Used by controllers to get a second opinion.
   """
   def confirm_sighting(drone) do
-    GenServer.call(drone, :confirm_sighting)
+    GenServer.call(drone, :confirm_sighting, 20_000)
   end
 
   # Server Callbacks
@@ -55,24 +59,24 @@ defmodule ElephantPatrol.Drone do
     elephant = Keyword.fetch!(opts, :elephant)
     controller = Keyword.fetch!(opts, :controller)
     state = %__MODULE__{name: format_name(name), elephant: elephant, controller: controller}
-    Logger.info("[#{state.name}] 🚁 Drone initialized | elephant=#{inspect(elephant)} controller=#{inspect(controller)}")
+    Logger.info("#{@color}[#{state.name}] 🚁 Drone initialized | elephant=#{inspect(elephant)} controller=#{inspect(controller)}#{@reset}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:observe, _from, state) do
-    Logger.info("[#{state.name}] 🚁 Starting observation of elephant...")
+    Logger.info("#{@color}[#{state.name}] 🚁 Starting observation of elephant...#{@reset}")
     result = do_observe(state)
-    Logger.info("[#{state.name}] 🚁 Observation complete | result=#{inspect(result)}")
+    Logger.info("#{@color}[#{state.name}] 🚁 Observation complete | result=#{inspect(result)}#{@reset}")
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
-    Logger.info("[#{state.name}] 🚁 Received confirmation request, checking elephant...")
+    Logger.info("#{@color}[#{state.name}] 🚁 Received confirmation request, checking elephant...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
-    Logger.info("[#{state.name}] 🚁 Confirmation result | elephant_state=#{inspect(elephant_state)} is_destroying=#{is_destroying}")
+    Logger.info("#{@color}[#{state.name}] 🚁 Confirmation result | elephant_state=#{inspect(elephant_state)} is_destroying=#{is_destroying}#{@reset}")
     {:reply, is_destroying, state}
   end
 
@@ -81,22 +85,22 @@ defmodule ElephantPatrol.Drone do
   defp do_observe(state) do
     case ElephantPatrol.Elephant.get_state(state.elephant) do
       :calm ->
-        Logger.debug("[#{state.name}] 🚁 Elephant is calm, no action needed")
+        Logger.debug("#{@color}[#{state.name}] 🚁 Elephant is calm, no action needed#{@reset}")
         {:ok, :calm}
 
       :destroying_crops ->
-        Logger.warning("[#{state.name}] 🚁 Elephant destroying crops! Requesting permission to scare...")
-        Logger.info("[#{state.name}] 🚁 Calling controller #{inspect(state.controller)} for scare approval")
+        Logger.warning("#{@color}[#{state.name}] 🚁 Elephant destroying crops! Requesting permission to scare...#{@reset}")
+        Logger.info("#{@color}[#{state.name}] 🚁 Calling controller #{inspect(state.controller)} for scare approval#{@reset}")
 
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
-            Logger.info("[#{state.name}] 🚁 Permission APPROVED! Scaring elephant...")
+            Logger.info("#{@color}[#{state.name}] 🚁 Permission APPROVED! Scaring elephant...#{@reset}")
             ElephantPatrol.Elephant.scare(state.elephant)
-            Logger.info("[#{state.name}] 🚁 Elephant scared off successfully")
+            Logger.info("#{@color}[#{state.name}] 🚁 Elephant scared off successfully#{@reset}")
             {:ok, :scared_off}
 
           :rejected ->
-            Logger.warning("[#{state.name}] 🚁 Permission REJECTED. Standing down.")
+            Logger.warning("#{@color}[#{state.name}] 🚁 Permission REJECTED. Standing down.#{@reset}")
             {:ok, :not_approved}
         end
     end

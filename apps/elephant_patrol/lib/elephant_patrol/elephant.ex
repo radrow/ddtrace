@@ -5,6 +5,10 @@ defmodule ElephantPatrol.Elephant do
   use GenServer
   require Logger
 
+  # Green color for elephant
+  @color IO.ANSI.green()
+  @reset IO.ANSI.reset()
+
   defstruct [:name, :state]
 
   # Client API
@@ -21,7 +25,7 @@ defmodule ElephantPatrol.Elephant do
   Returns the current state of the elephant (:calm or :destroying_crops).
   """
   def get_state(elephant) do
-    GenServer.call(elephant, :get_state)
+    GenServer.call(elephant, :get_state, 20_000)
   end
 
   @doc """
@@ -51,31 +55,30 @@ defmodule ElephantPatrol.Elephant do
   def init(opts) do
     name = Keyword.get(opts, :name, self())
     state = %__MODULE__{name: format_name(name), state: :calm}
-    Logger.info("[#{state.name}] 🐘 Elephant initialized | state=:calm")
+    Logger.info("#{@color}[#{state.name}] 🐘 Elephant initialized | state=:calm#{@reset}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    Logger.debug("[#{state.name}] 🐘 State queried | state=#{inspect(state.state)}")
     {:reply, state.state, state}
   end
 
   @impl true
   def handle_cast(:stay_calm, state) do
-    Logger.info("[#{state.name}] 🐘 Staying calm | previous=#{inspect(state.state)} -> new=:calm")
+    Logger.info("#{@color}[#{state.name}] 🐘 Staying calm | previous=#{inspect(state.state)} -> new=:calm#{@reset}")
     {:noreply, %{state | state: :calm}}
   end
 
   @impl true
   def handle_cast(:destroy_crops, state) do
-    Logger.warning("[#{state.name}] 🐘 DESTROYING CROPS! | previous=#{inspect(state.state)} -> new=:destroying_crops")
+    Logger.info("#{@color}[#{state.name}] 🐘 DESTROYING CROPS! | previous=#{inspect(state.state)} -> new=:destroying_crops#{@reset}")
     {:noreply, %{state | state: :destroying_crops}}
   end
 
   @impl true
   def handle_cast(:scare, state) do
-    Logger.info("[#{state.name}] 🐘 Got scared! Calming down | previous=#{inspect(state.state)} -> new=:calm")
+    Logger.info("#{@color}[#{state.name}] 🐘 Got scared! Calming down | previous=#{inspect(state.state)} -> new=:calm#{@reset}")
     {:noreply, %{state | state: :calm}}
   end
 
