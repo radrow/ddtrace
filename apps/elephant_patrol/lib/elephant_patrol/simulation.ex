@@ -190,27 +190,27 @@ defmodule ElephantPatrol.Simulation do
   end
 
   @doc """
-  Runs a simple simulation scenario.
+  Triggers the elephant to destroy crops and watches the system respond.
   Can be run from any connected node after all processes are started.
   """
-  def run_simulation do
+  def trigger_elephant do
     Logger.info("""
 
     ╔════════════════════════════════════════════════════════════╗
-    ║           ELEPHANT PATROL SIMULATION STARTING              ║
+    ║           🐘 TRIGGERING THE ELEPHANT 🐘                    ║
     ╚════════════════════════════════════════════════════════════╝
     """)
 
     # Ensure all processes are available
     case wait_for_processes(5_000) do
-      :ok -> do_run_simulation()
+      :ok -> do_trigger_elephant()
       {:error, :timeout, missing} ->
-        Logger.error("Cannot run simulation. Missing processes: #{inspect(missing)}")
+        Logger.error("Cannot trigger elephant. Missing processes: #{inspect(missing)}")
         {:error, :missing_processes}
     end
   end
 
-  defp do_run_simulation do
+  defp do_trigger_elephant do
     # Give some time for logs to flush
     Process.sleep(500)
 
@@ -245,7 +245,7 @@ defmodule ElephantPatrol.Simulation do
     Logger.info("""
 
     ╔════════════════════════════════════════════════════════════╗
-    ║           SIMULATION COMPLETE                              ║
+    ║           🎉 ELEPHANT SECURED 🎉                           ║
     ╚════════════════════════════════════════════════════════════╝
     """)
 
@@ -282,7 +282,7 @@ defmodule ElephantPatrol.Simulation do
     :global.sync()
     Process.sleep(500)
 
-    # Run simulation
-    run_simulation()
+    # Trigger the elephant
+    trigger_elephant()
   end
 end
