@@ -49,17 +49,17 @@ defmodule ElephantPatrol.Controller do
     drone = Keyword.fetch!(opts, :drone)
     confirming_drone = Keyword.fetch!(opts, :confirming_drone)
     state = %__MODULE__{name: format_name(name), drone: drone, confirming_drone: confirming_drone}
-    Logger.info("#{@color}[#{state.name}] 🎮 Controller initialized | drone=#{inspect(drone)} confirming_drone=#{inspect(confirming_drone)}#{@reset}")
+    Logger.debug("#{@color}[#{state.name}] 🎮 Controller initialized#{@reset}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:request_scare, _from, state) do
     Logger.info("#{@color}[#{state.name}] 🎮 Received scare request from drone#{@reset}")
-    
+
     # Small delay to ensure both controllers receive requests before either tries to confirm
     Process.sleep(500)
-    
+
     Logger.info("#{@color}[#{state.name}] 🎮 Requesting confirmation from #{inspect(state.confirming_drone)}...#{@reset}")
 
     result =

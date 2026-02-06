@@ -55,7 +55,7 @@ defmodule ElephantPatrol.Elephant do
   def init(opts) do
     name = Keyword.get(opts, :name, self())
     state = %__MODULE__{name: format_name(name), state: :calm}
-    Logger.info("#{@color}[#{state.name}] 🐘 Elephant initialized | state=:calm#{@reset}")
+    Logger.debug("#{@color}[#{state.name}] 🐘 Elephant initialized#{@reset}")
     {:ok, state}
   end
 
@@ -66,19 +66,19 @@ defmodule ElephantPatrol.Elephant do
 
   @impl true
   def handle_cast(:stay_calm, state) do
-    Logger.info("#{@color}[#{state.name}] 🐘 Staying calm | previous=#{inspect(state.state)} -> new=:calm#{@reset}")
+    Logger.debug("#{@color}[#{state.name}] 🐘 Staying calm#{@reset}")
     {:noreply, %{state | state: :calm}}
   end
 
   @impl true
   def handle_cast(:destroy_crops, state) do
-    Logger.info("#{@color}[#{state.name}] 🐘 DESTROYING CROPS! | previous=#{inspect(state.state)} -> new=:destroying_crops#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🐘 DESTROYING CROPS!#{@reset}")
     {:noreply, %{state | state: :destroying_crops}}
   end
 
   @impl true
   def handle_cast(:scare, state) do
-    Logger.info("#{@color}[#{state.name}] 🐘 Got scared! Calming down | previous=#{inspect(state.state)} -> new=:calm#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🐘 Got scared! Running away#{@reset}")
     {:noreply, %{state | state: :calm}}
   end
 

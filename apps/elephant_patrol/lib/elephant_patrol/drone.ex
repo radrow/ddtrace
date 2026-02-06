@@ -59,24 +59,23 @@ defmodule ElephantPatrol.Drone do
     elephant = Keyword.fetch!(opts, :elephant)
     controller = Keyword.fetch!(opts, :controller)
     state = %__MODULE__{name: format_name(name), elephant: elephant, controller: controller}
-    Logger.info("#{@color}[#{state.name}] 🚁 Drone initialized | pid=#{inspect(self())}, elephant=#{inspect(elephant)} controller=#{inspect(controller)}#{@reset}")
+    Logger.debug("#{@color}[#{state.name}] 🚁 Drone initialized#{@reset}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:observe, _from, state) do
-    Logger.info("#{@color}[#{state.name}] 🚁 Starting observation of elephant...#{@reset}")
+    Logger.info("#{@color}[#{state.name}] � Observing elephant...#{@reset}")
     result = do_observe(state)
-    Logger.info("#{@color}[#{state.name}] 🚁 Observation complete | result=#{inspect(result)}#{@reset}")
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
-    Logger.info("#{@color}[#{state.name}] 🚁 Received confirmation request, checking elephant...#{@reset}")
+    Logger.info("#{@color}[#{state.name}] � Checking elephant for confirmation...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
-    Logger.info("#{@color}[#{state.name}] 🚁 Confirmation result | elephant_state=#{inspect(elephant_state)} is_destroying=#{is_destroying}#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🔎 Confirmed: #{is_destroying}#{@reset}")
     {:reply, is_destroying, state}
   end
 
@@ -85,22 +84,20 @@ defmodule ElephantPatrol.Drone do
   defp do_observe(state) do
     case ElephantPatrol.Elephant.get_state(state.elephant) do
       :calm ->
-        Logger.debug("#{@color}[#{state.name}] 🚁 Elephant is calm, no action needed#{@reset}")
+        Logger.info("#{@color}[#{state.name}] ✅ Elephant is calm#{@reset}")
         {:ok, :calm}
 
       :destroying_crops ->
-        Logger.warning("#{@color}[#{state.name}] 🚁 Elephant destroying crops! Requesting permission to scare...#{@reset}")
-        Logger.info("#{@color}[#{state.name}] 🚁 Calling controller #{inspect(state.controller)} for scare approval#{@reset}")
+        Logger.warning("#{@color}[#{state.name}] ⚠️  Elephant destroying crops! Requesting scare permission...#{@reset}")
 
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
-            Logger.info("#{@color}[#{state.name}] 🚁 Permission APPROVED! Scaring elephant...#{@reset}")
             ElephantPatrol.Elephant.scare(state.elephant)
-            Logger.info("#{@color}[#{state.name}] 🚁 Elephant scared off successfully#{@reset}")
+            Logger.info("#{@color}[#{state.name}] ✅ Elephant scared off!#{@reset}")
             {:ok, :scared_off}
 
           :rejected ->
-            Logger.warning("#{@color}[#{state.name}] 🚁 Permission REJECTED. Standing down.#{@reset}")
+            Logger.warning("#{@color}[#{state.name}] ❌ Permission rejected, standing down#{@reset}")
             {:ok, :not_approved}
         end
     end
