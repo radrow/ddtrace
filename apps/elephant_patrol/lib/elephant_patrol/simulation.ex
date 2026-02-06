@@ -181,7 +181,7 @@ defmodule ElephantPatrol.Simulation do
   def trigger_elephant(opts \\ []) do
     monitored = Keyword.get(opts, :monitored, false)
     n_calls = Keyword.get(opts, :calls, 1)
-    
+
     case wait_for_processes(5_000) do
       :ok -> do_trigger_elephant(monitored, n_calls)
       {:error, :timeout, missing} ->
@@ -192,7 +192,7 @@ defmodule ElephantPatrol.Simulation do
 
   defp do_trigger_elephant(monitored, n_calls) do
     Process.sleep(500)
-    
+
     ElephantPatrol.Elephant.destroy_crops(@elephant)
     Process.sleep(1000)
 
@@ -493,7 +493,7 @@ defmodule ElephantPatrol.Simulation do
         Logger.info("""
 
         ╔════════════════════════════════════════════════════════════╗
-        ║   ✅ SUCCESS — All drones completed observation             ║
+        ║   ✅ SUCCESS — All drones completed observation            ║
         ╚════════════════════════════════════════════════════════════╝
         """)
 

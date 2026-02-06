@@ -3,13 +3,13 @@
 
 cd "$(dirname "$0")/../../.."
 
-echo "╔════════════════════════════════════════════════════════════════════════╗"
-echo "║   Starting FIELD node...                                               ║"
-echo "║   After all nodes are ready, run:                                      ║"
-echo "║                                                                        ║"
-echo "║   ElephantPatrol.trigger_elephant()                  # Without ddtrace ║"
-echo "║   ElephantPatrol.trigger_elephant(monitored: true)   # With ddtrace    ║"
-echo "╚════════════════════════════════════════════════════════════════════════╝"
+echo "╔═════════════════════════════════════════════════════════════════════╗"
+echo "║ Starting FIELD node...                                              ║"
+echo "║ After all nodes are ready, run:                                     ║"
+echo "║                                                                     ║"
+echo "║ ElephantPatrol.trigger_elephant()                 # Without ddtrace ║"
+echo "║ ElephantPatrol.trigger_elephant(monitored: true)  # With ddtrace    ║"
+echo "╚═════════════════════════════════════════════════════════════════════╝"
 echo ""
 
 EVAL_CODE='

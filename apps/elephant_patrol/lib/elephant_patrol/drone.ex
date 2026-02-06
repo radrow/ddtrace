@@ -65,14 +65,14 @@ defmodule ElephantPatrol.Drone do
 
   @impl true
   def handle_call(:observe, _from, state) do
-    Logger.info("#{@color}[#{state.name}] � Observing elephant...#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🔎 Observing elephant...#{@reset}")
     result = do_observe(state)
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
-    Logger.info("#{@color}[#{state.name}] � Received elephant confirmation request...#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🔎 Received elephant confirmation request...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
     Logger.info("#{@color}[#{state.name}] 🔎 Confirmation verdict: #{is_destroying}#{@reset}")
@@ -88,12 +88,13 @@ defmodule ElephantPatrol.Drone do
         {:ok, :calm}
 
       :destroying_crops ->
-        Logger.info("#{@color}[#{state.name}] ⚠️ Elephant destroying crops! Requesting scare permission...#{@reset}")
+        Logger.info("#{@color}[#{state.name}] ⚠️ ️Elephant destroying crops! Requesting scare permission...#{@reset}")
 
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
             ElephantPatrol.Elephant.scare(state.elephant)
-            Logger.info("#{@color}[#{state.name}] ✅ Affirmative. Scaring off the elephant: AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
+            Logger.info("#{@color}[#{state.name}] ✅ Affirmative.")
+            Logger.info("#{@color}[#{state.name}] Scaring off the elephant: 📣 AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
             {:ok, :scared_off}
 
           :rejected ->
