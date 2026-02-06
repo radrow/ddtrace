@@ -210,11 +210,11 @@ handle_event({call, From}, stop_tracer, _State, Data) ->
 
 %% The worker has attempted a call to itself. When this happens, no actual
 %% message is sent. We fake the call message to "detect" the deadlock.
-handle_event(info, {'DOWN', _ErlMon, process, Pid, {calling_self, _Reason}}, _State, Data = #data{worker = Pid}) ->
+handle_event(info, {'DOWN', _ErlMon, process, Pid, {calling_self, _Reason}}, _State, Data = #data{worker_pid = Pid}) ->
     handle_recv(Data#data.worker, ?QUERY_INFO(make_ref()), Data),
     keep_state_and_data;
 %% The worker process has died.
-handle_event(info, {'DOWN', ErlMon, process, Pid, Reason}, _State, Data = #data{worker = Pid}) ->
+handle_event(info, {'DOWN', ErlMon, process, Pid, Reason}, _State, Data = #data{worker_pid = Pid}) ->
     case is_self_loop(Reason) of
         true ->
             handle_recv(Data#data.worker, ?QUERY_INFO(make_ref()), Data),

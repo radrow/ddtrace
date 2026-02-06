@@ -55,29 +55,31 @@ defmodule ElephantPatrol.Controller do
 
   @impl true
   def handle_call(:request_scare, _from, state) do
-    Logger.info("#{@color}[#{state.name}] 🎮 Received scare request from drone#{@reset}")
+    Logger.info(
+      "#{@color}[#{state.name}] 📋 Scare request received, asking #{format_ref(state.confirming_drone)} to confirm...#{@reset}"
+    )
 
     # Small delay to ensure both controllers receive requests before either tries to confirm
     Process.sleep(500)
 
-    Logger.info("#{@color}[#{state.name}] 🎮 Requesting confirmation from #{inspect(state.confirming_drone)}...#{@reset}")
-
     result =
       case ElephantPatrol.Drone.confirm_sighting(state.confirming_drone) do
         true ->
-          Logger.info("#{@color}[#{state.name}] 🎮 Sighting CONFIRMED by confirming drone -> APPROVING scare#{@reset}")
+          Logger.info("#{@color}[#{state.name}] ✅ Confirmed → approved#{@reset}")
           :approved
 
         false ->
-          Logger.warning("#{@color}[#{state.name}] 🎮 Sighting NOT CONFIRMED by confirming drone -> REJECTING scare#{@reset}")
+          Logger.warning("#{@color}[#{state.name}] ❌ Not confirmed → rejected#{@reset}")
           :rejected
       end
 
-    Logger.info("#{@color}[#{state.name}] 🎮 Scare request decision: #{inspect(result)}#{@reset}")
     {:reply, result, state}
   end
 
   # Private Functions
+
+  defp format_ref({:global, name}), do: Atom.to_string(name)
+  defp format_ref(other), do: inspect(other)
 
   defp format_name(name) when is_atom(name), do: "Controller:#{name}"
   defp format_name(pid) when is_pid(pid), do: "Controller:#{inspect(pid)}"

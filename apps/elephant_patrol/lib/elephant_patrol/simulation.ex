@@ -39,6 +39,9 @@ defmodule ElephantPatrol.Simulation do
   @controller1 {:global, :controller1}
   @controller2 {:global, :controller2}
 
+  @patrol1_sup :patrol1_sup
+  @patrol2_sup :patrol2_sup
+
   # ============================================================================
   # Node Setup Functions
   # ============================================================================
@@ -81,16 +84,18 @@ defmodule ElephantPatrol.Simulation do
   Starts drone1 and controller1 on patrol1 node.
   """
   def start_patrol1(_opts \\ []) do
-    {:ok, _} = ElephantPatrol.Drone.start_link(
-      name: @drone1,
-      elephant: @elephant,
-      controller: @controller1
-    )
-
-    {:ok, _} = ElephantPatrol.Controller.start_link(
-      name: @controller1,
-      drone: @drone1,
-      confirming_drone: @drone2
+    {:ok, _} = ElephantPatrol.PatrolSupervisor.start(
+      name: @patrol1_sup,
+      drone: [
+        name: @drone1,
+        elephant: @elephant,
+        controller: @controller1
+      ],
+      controller: [
+        name: @controller1,
+        drone: @drone1,
+        confirming_drone: @drone2
+      ]
     )
 
     :global.sync()
@@ -102,16 +107,18 @@ defmodule ElephantPatrol.Simulation do
   Starts drone2 and controller2 on patrol2 node.
   """
   def start_patrol2(_opts \\ []) do
-    {:ok, _} = ElephantPatrol.Drone.start_link(
-      name: @drone2,
-      elephant: @elephant,
-      controller: @controller2
-    )
-
-    {:ok, _} = ElephantPatrol.Controller.start_link(
-      name: @controller2,
-      drone: @drone2,
-      confirming_drone: @drone1
+    {:ok, _} = ElephantPatrol.PatrolSupervisor.start(
+      name: @patrol2_sup,
+      drone: [
+        name: @drone2,
+        elephant: @elephant,
+        controller: @controller2
+      ],
+      controller: [
+        name: @controller2,
+        drone: @drone2,
+        confirming_drone: @drone1
+      ]
     )
 
     :global.sync()
@@ -224,7 +231,15 @@ defmodule ElephantPatrol.Simulation do
     result = do_calls(calls, timeout: 20_000, monitor_ctx: ctx)
 
     print_result(result)
+
+    # Clean up monitors BEFORE restarting workers, so ddtrace doesn't
+    # see DOWN messages from the workers being terminated.
     cleanup_monitors(ctx)
+
+    # On deadlock, gracefully restart the stuck processes before they time out
+    if match?({:deadlock, _}, result) do
+      recover_from_deadlock()
+    end
 
     Logger.info("""
 
@@ -329,10 +344,35 @@ defmodule ElephantPatrol.Simulation do
     Enum.each(monitors, fn {_global_name, monitor} ->
       try do
         :ddtrace.stop_tracer(monitor)
+        GenServer.stop(monitor, :normal, 5_000)
       catch
         :exit, _ -> :ok
       end
     end)
+  end
+
+  defp recover_from_deadlock do
+    Logger.info("🔄 Recovering — restarting stuck patrol processes...")
+
+    # Restart both patrol supervisors via restart_children.
+    # Each supervisor uses a local name on its respective node.
+    for {node, sup} <- [{@patrol1_node, @patrol1_sup}, {@patrol2_node, @patrol2_sup}] do
+      try do
+        if node == node() do
+          ElephantPatrol.PatrolSupervisor.restart_children(sup)
+        else
+          :rpc.call(node, ElephantPatrol.PatrolSupervisor, :restart_children, [sup])
+        end
+      catch
+        :exit, _ -> :ok
+      end
+    end
+
+    # Wait for global name re-registration
+    :global.sync()
+    Process.sleep(500)
+    :global.sync()
+    Logger.info("🔄 All patrols restarted and ready")
   end
 
   # ============================================================================
