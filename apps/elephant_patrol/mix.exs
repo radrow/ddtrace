@@ -22,6 +22,8 @@ defmodule ElephantPatrol.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:ddtrace, in_umbrella: true}
+    ]
   end
 end

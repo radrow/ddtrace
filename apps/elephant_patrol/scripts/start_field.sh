@@ -7,14 +7,17 @@ echo "🌾 Starting FIELD node..."
 echo "   This node hosts the Elephant."
 echo ""
 echo "   After all nodes are ready, run:"
-echo "   ElephantPatrol.trigger_elephant()"
+echo "   ElephantPatrol.trigger_elephant()              # Without monitoring"
+echo "   ElephantPatrol.trigger_elephant(monitored: true)   # With ddtrace"
 echo ""
 
-iex --sname field@localhost --eval '
+EVAL_CODE='
   spawn(fn ->
     Process.sleep(2000)
     ElephantPatrol.Simulation.connect_nodes()
     ElephantPatrol.Simulation.start_elephant()
-    IO.puts("\n🌾 Field node ready! Run ElephantPatrol.trigger_elephant() when all nodes are up.\n")
+    IO.puts("\n🌾 Field node ready!\n")
   end)
-' -S mix
+'
+
+iex --name field@127.0.0.1 --cookie elephant_patrol --eval "$EVAL_CODE" -S mix

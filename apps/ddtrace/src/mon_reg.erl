@@ -22,9 +22,12 @@ start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
 mon_of(Reg, Pid) ->
-    gen_server:call(Reg, {whereis, Pid}).
+    Mon = gen_server:call(Reg, {whereis, Pid}),
+    io:format("GETTING MON OF ~p  ==>  ~p\n", [Pid, Mon]),
+    Mon.
 
 set_mon(Reg, Pid, Mon) ->
+    io:format("SETTING MON OF ~p  ==>  ~p\n", [Pid, Mon]),
     gen_server:call(Reg, {register, Pid, Mon}).
 
 unset_mon(Reg, Pid) ->

@@ -10,36 +10,38 @@ defmodule ElephantPatrol.Simulation do
   Controller1 uses Drone2 for confirmation (cross-node)
   Controller2 uses Drone1 for confirmation (cross-node)
 
-  ## Usage (Manual Setup - Recommended)
+  ## Usage
 
-  Start each node in a separate terminal, then run these commands:
+  Start each node in a separate terminal:
 
-      # On field@localhost:
-      ElephantPatrol.Simulation.connect_nodes()
-      ElephantPatrol.Simulation.start_elephant()
+      # Terminal 1 - Field node
+      ./apps/elephant_patrol/scripts/start_field.sh
 
-      # On patrol1@localhost:
-      ElephantPatrol.Simulation.connect_nodes()
-      ElephantPatrol.Simulation.start_patrol1()
+      # Terminal 2 - Patrol1 node
+      ./apps/elephant_patrol/scripts/start_patrol1.sh
 
-      # On patrol2@localhost:
-      ElephantPatrol.Simulation.connect_nodes()
-      ElephantPatrol.Simulation.start_patrol2()
+      # Terminal 3 - Patrol2 node
+      ./apps/elephant_patrol/scripts/start_patrol2.sh
 
-      # On any node (after all processes started):
-      ElephantPatrol.Simulation.run_simulation()
+      # On field node, run:
+      ElephantPatrol.trigger_elephant()           # Without monitoring
+      ElephantPatrol.trigger_elephant(monitored: true)  # With ddtrace
   """
   require Logger
 
-  @field_node :"field@localhost"
-  @patrol1_node :"patrol1@localhost"
-  @patrol2_node :"patrol2@localhost"
+  @field_node :"field@127.0.0.1"
+  @patrol1_node :"patrol1@127.0.0.1"
+  @patrol2_node :"patrol2@127.0.0.1"
 
   @elephant {:global, :elephant}
   @drone1 {:global, :drone1}
   @drone2 {:global, :drone2}
   @controller1 {:global, :controller1}
   @controller2 {:global, :controller2}
+
+  # ============================================================================
+  # Node Setup Functions
+  # ============================================================================
 
   @doc """
   Connects to all nodes in the cluster.
@@ -53,92 +55,70 @@ defmodule ElephantPatrol.Simulation do
 
     for node <- nodes, node != current do
       case Node.connect(node) do
-        true ->
-          Logger.info("✅ Connected to #{node}")
-        false ->
-          Logger.warning("❌ Failed to connect to #{node}")
-        :ignored ->
-          Logger.info("⏭️  Ignoring #{node} (not alive)")
+        true -> Logger.info("✅ Connected to #{node}")
+        false -> Logger.warning("❌ Failed to connect to #{node}")
+        :ignored -> Logger.info("⏭️  Ignoring #{node} (not alive)")
       end
     end
 
-    # Synchronize global name registry
     :global.sync()
-
     Logger.info("🌐 Connected nodes: #{inspect(Node.list())}")
     :ok
   end
 
   @doc """
   Starts the elephant on the field node.
-  Run this on the field@localhost node.
   """
-  def start_elephant do
+  def start_elephant(_opts \\ []) do
     Logger.info("🐘 Starting elephant on field node...")
-
     {:ok, _pid} = ElephantPatrol.Elephant.start_link(name: @elephant)
-
-    # Sync global names after registration
     :global.sync()
-
     Logger.info("🐘 Elephant registered globally as :elephant")
     :ok
   end
 
   @doc """
   Starts drone1 and controller1 on patrol1 node.
-  Controller1 uses drone2 (on patrol2) for confirmation.
-  Run this on the patrol1@localhost node.
   """
-  def start_patrol1 do
+  def start_patrol1(_opts \\ []) do
     Logger.info("🚁 Starting patrol1 (drone1 + controller1)...")
 
-    # Start drone1 - observes the global elephant, reports to controller1
     {:ok, _} = ElephantPatrol.Drone.start_link(
       name: @drone1,
       elephant: @elephant,
       controller: @controller1
     )
 
-    # Start controller1 - uses drone2 (on patrol2) for confirmation
     {:ok, _} = ElephantPatrol.Controller.start_link(
       name: @controller1,
       drone: @drone1,
       confirming_drone: @drone2
     )
 
-    # Sync global names after registration
     :global.sync()
-
     Logger.info("🚁 Patrol1 ready: drone1 + controller1")
     :ok
   end
 
   @doc """
   Starts drone2 and controller2 on patrol2 node.
-  Controller2 uses drone1 (on patrol1) for confirmation.
-  Run this on the patrol2@localhost node.
   """
-  def start_patrol2 do
+  def start_patrol2(_opts \\ []) do
     Logger.info("🚁 Starting patrol2 (drone2 + controller2)...")
 
-    # Start drone2 - observes the global elephant, reports to controller2
     {:ok, _} = ElephantPatrol.Drone.start_link(
       name: @drone2,
       elephant: @elephant,
       controller: @controller2
     )
 
-    # Start controller2 - uses drone1 (on patrol1) for confirmation
     {:ok, _} = ElephantPatrol.Controller.start_link(
       name: @controller2,
       drone: @drone2,
       confirming_drone: @drone1
     )
 
-    # Sync global names after registration
     :global.sync()
-
     Logger.info("🚁 Patrol2 ready: drone2 + controller2")
     :ok
   end
@@ -158,9 +138,7 @@ defmodule ElephantPatrol.Simulation do
   def wait_for_processes(timeout \\ 10_000) do
     required = [:elephant, :drone1, :drone2, :controller1, :controller2]
     deadline = System.monotonic_time(:millisecond) + timeout
-
     Logger.info("⏳ Waiting for all processes to register...")
-
     wait_loop(required, deadline)
   end
 
@@ -189,37 +167,43 @@ defmodule ElephantPatrol.Simulation do
     end
   end
 
+  # ============================================================================
+  # Simulation Trigger
+  # ============================================================================
+
   @doc """
   Triggers the elephant to destroy crops and watches the system respond.
-  Can be run from any connected node after all processes are started.
+
+  Options:
+  - `:monitored` - if true, uses ddtrace to detect deadlocks (default: false)
   """
-  def trigger_elephant do
+  def trigger_elephant(opts \\ []) do
+    monitored = Keyword.get(opts, :monitored, false)
+
     Logger.info("""
 
     ╔════════════════════════════════════════════════════════════╗
     ║           🐘 TRIGGERING THE ELEPHANT 🐘                    ║
+    ║           Monitoring: #{if monitored, do: "ENABLED", else: "DISABLED"}                        ║
     ╚════════════════════════════════════════════════════════════╝
     """)
 
-    # Ensure all processes are available
     case wait_for_processes(5_000) do
-      :ok -> do_trigger_elephant()
+      :ok -> do_trigger_elephant(monitored)
       {:error, :timeout, missing} ->
         Logger.error("Cannot trigger elephant. Missing processes: #{inspect(missing)}")
         {:error, :missing_processes}
     end
   end
 
-  defp do_trigger_elephant do
-    # Give some time for logs to flush
+  defp do_trigger_elephant(monitored) do
     Process.sleep(1000)
 
     # Step 1: Check initial state
     Logger.info("📍 Step 1: Checking initial elephant state...")
-    Process.sleep(500)
     state = ElephantPatrol.Elephant.get_state(@elephant)
     Logger.info("📍 Elephant is currently: #{inspect(state)}")
-    Process.sleep(1000)
+    Process.sleep(500)
 
     # Step 2: Elephant starts destroying crops!
     Logger.info("""
@@ -229,7 +213,7 @@ defmodule ElephantPatrol.Simulation do
     ╚════════════════════════════════════════════════════════════╝
     """)
     ElephantPatrol.Elephant.destroy_crops(@elephant)
-    Process.sleep(1500)
+    Process.sleep(1000)
 
     # Step 3: Both drones observe SIMULTANEOUSLY - this creates the deadlock!
     Logger.info("""
@@ -238,40 +222,22 @@ defmodule ElephantPatrol.Simulation do
     ║   🚁 DISPATCHING BOTH DRONES SIMULTANEOUSLY...             ║
     ╚════════════════════════════════════════════════════════════╝
     """)
-    Process.sleep(1000)
 
-    # Spawn both observations simultaneously
-    task1 = Task.async(fn ->
-      Logger.info("🚁 [Task] Drone1 starting observation...")
-      result = ElephantPatrol.Drone.observe(@drone1)
-      Logger.info("🚁 [Task] Drone1 finished with: #{inspect(result)}")
-      result
-    end)
+    # Collect all process PIDs
+    pids = collect_all_pids()
+    Logger.info("🔍 Collected PIDs: #{inspect(pids)}")
 
-    # Small delay to make logs clearer, but still simultaneous enough for deadlock
-    Process.sleep(100)
+    # Setup monitors (like microchip_factory does)
+    ctx = setup_monitors(monitored, pids)
 
-    task2 = Task.async(fn ->
-      Logger.info("🚁 [Task] Drone2 starting observation...")
-      result = ElephantPatrol.Drone.observe(@drone2)
-      Logger.info("🚁 [Task] Drone2 finished with: #{inspect(result)}")
-      result
-    end)
+    # Prepare calls to both drones
+    calls = [@drone1, @drone2]
 
-    Process.sleep(1000)
-    try do
-      result1 = Task.await(task1, 25_000)
-      result2 = Task.await(task2, 25_000)
-      Logger.info("📍 Results: Drone1=#{inspect(result1)}, Drone2=#{inspect(result2)}")
-    catch
-      :exit, _ ->
-        Logger.error("""
+    # Execute the calls
+    result = do_calls(calls, timeout: 20_000, monitor_ctx: ctx)
 
-        ╔════════════════════════════════════════════════════════════╗
-        ║   💀 TIMEOUT! Tasks did not complete.                      ║
-        ╚════════════════════════════════════════════════════════════╝
-        """)
-    end
+    print_result(result)
+    cleanup_monitors(ctx)
 
     Logger.info("""
 
@@ -280,40 +246,290 @@ defmodule ElephantPatrol.Simulation do
     ╚════════════════════════════════════════════════════════════╝
     """)
 
+    result
+  end
+
+  defp collect_all_pids do
+    # Get all the PIDs we need to monitor
+    elephant_pid = GenServer.whereis(@elephant)
+    drone1_pid = GenServer.whereis(@drone1)
+    drone2_pid = GenServer.whereis(@drone2)
+    controller1_pid = GenServer.whereis(@controller1)
+    controller2_pid = GenServer.whereis(@controller2)
+
+    %{
+      elephant: elephant_pid,
+      drone1: drone1_pid,
+      drone2: drone2_pid,
+      controller1: controller1_pid,
+      controller2: controller2_pid
+    }
+  end
+
+  # ============================================================================
+  # Monitoring Setup
+  # ============================================================================
+
+  defp setup_monitors(false, _pids), do: nil
+
+  defp setup_monitors(true, pids) do
+    Logger.info("🔍 Setting up distributed monitors...")
+
+    # Start monitor registry on current node
+    {:ok, mon_reg} = :mon_reg.start_link()
+    Logger.info("🔍 Created mon_reg: #{inspect(mon_reg)}")
+
+    # Group PIDs by node
+    pids_by_node =
+      pids
+      |> Map.values()
+      |> Enum.filter(& &1)  # Remove nils
+      |> Enum.group_by(&node/1)
+
+    Logger.info("🔍 PIDs by node: #{inspect(pids_by_node)}")
+
+    # Create monitors for each PID - we need to ensure ordering
+    # First create all monitors, then verify they're all registered
+    monitors =
+      Enum.reduce(pids_by_node, %{}, fn {target_node, node_pids}, acc ->
+        if target_node == node() do
+          # Local PIDs - create monitors directly
+          Logger.info("🔍 Creating monitors for local PIDs on #{target_node}...")
+          create_local_monitors(node_pids, mon_reg, acc)
+        else
+          # Remote PIDs - use RPC to create monitors on that node
+          Logger.info("🔍 Creating monitors for remote PIDs on #{target_node} via RPC...")
+          create_remote_monitors(target_node, node_pids, mon_reg, acc)
+        end
+      end)
+
+    # Wait a bit for all registrations to propagate
+    Process.sleep(500)
+
+    # Verify all monitors are registered
+    Logger.info("🔍 Verifying monitor registrations...")
+    for {pid, monitor} <- monitors do
+      lookup = :mon_reg.mon_of(mon_reg, pid)
+      Logger.info("   #{inspect(pid)} => #{inspect(lookup)} (expected: #{inspect(monitor)})")
+    end
+
+    Logger.info("🔍 All monitors created: #{inspect(monitors)}")
+
+    %{mon_reg: mon_reg, monitors: monitors}
+  end
+
+  defp create_local_monitors(pids, mon_reg, acc) do
+    Enum.reduce(pids, acc, fn pid, inner_acc ->
+      case :ddtrace.start_link(pid, mon_reg, []) do
+        {:ok, monitor} ->
+          Logger.info("   ✓ Monitor #{inspect(monitor)} for local #{inspect(pid)}")
+          Map.put(inner_acc, pid, monitor)
+        {:error, reason} ->
+          Logger.error("   ✗ Failed to monitor #{inspect(pid)}: #{inspect(reason)}")
+          inner_acc
+      end
+    end)
+  end
+
+  defp create_remote_monitors(target_node, pids, mon_reg, acc) do
+    # For each remote PID, we need to spawn a monitor on that node
+    # The monitor must be local to the PID it's monitoring
+    # Use :start instead of :start_link to avoid linking issues with RPC
+    Enum.reduce(pids, acc, fn pid, inner_acc ->
+      # Use RPC to start the monitor on the remote node
+      case :rpc.call(target_node, :ddtrace, :start, [pid, mon_reg, []]) do
+        {:ok, monitor} ->
+          Logger.info("   ✓ Monitor #{inspect(monitor)} for remote #{inspect(pid)} on #{target_node}")
+          Map.put(inner_acc, pid, monitor)
+        {:error, reason} ->
+          Logger.error("   ✗ Failed to monitor #{inspect(pid)}: #{inspect(reason)}")
+          inner_acc
+        {:badrpc, reason} ->
+          Logger.error("   ✗ RPC failed for #{inspect(pid)}: #{inspect(reason)}")
+          inner_acc
+      end
+    end)
+  end
+
+  defp cleanup_monitors(nil), do: :ok
+
+  defp cleanup_monitors(%{mon_reg: mon_reg, monitors: monitors}) do
+    Enum.each(monitors, fn {_pid, monitor} ->
+      :ddtrace.stop_tracer(monitor)
+    end)
+    GenServer.stop(mon_reg)
+  end
+
+  # ============================================================================
+  # Call Execution (following microchip_factory pattern)
+  # ============================================================================
+
+  defp do_calls(drones, opts) do
+    timeout = Keyword.fetch!(opts, :timeout)
+    ctx = Keyword.get(opts, :monitor_ctx)
+
+    # Prepare requests to both drones simultaneously
+    reqs =
+      Enum.map(drones, fn drone ->
+        # Small delay between calls to make logs clearer
+        Process.sleep(50)
+        prepare_request(drone, ctx)
+      end)
+
+    # Wait for all responses
+    results = Enum.map(reqs, &await_response(&1, timeout))
+
+    # Check for deadlock first
+    case Enum.find(results, &match?({:deadlock, _}, &1)) do
+      {:deadlock, dl} -> {:deadlock, dl}
+      nil ->
+        cond do
+          Enum.any?(results, &(&1 == :timeout)) -> :timeout
+          true ->
+            replies = for {:ok, reply} <- results, do: reply
+            {:success, replies}
+        end
+    end
+  end
+
+  defp prepare_request(drone, nil) do
+    # No monitoring - just send the request
+    call_req = :gen_server.send_request(drone, :observe)
+    %{drone: drone, call_req: call_req}
+  end
+
+  defp prepare_request(drone, %{monitors: monitors}) do
+    # With monitoring - also subscribe to deadlocks
+    drone_pid = GenServer.whereis(drone) || raise "unknown drone #{inspect(drone)}"
+    monitor = Map.fetch!(monitors, drone_pid)
+
+    call_req = :gen_server.send_request(drone, :observe)
+    deadlock_req = :ddtrace.subscribe_deadlocks(monitor)
+
+    %{drone: drone, call_req: call_req, deadlock_req: deadlock_req, monitor: monitor}
+  end
+
+  defp await_response(req_info, timeout) do
+    reqs0 = :gen_server.reqids_new()
+    reqs1 = :gen_server.reqids_add(req_info.call_req, {:call, req_info}, reqs0)
+
+    reqs =
+      case Map.get(req_info, :deadlock_req) do
+        nil -> reqs1
+        deadlock_req -> :gen_server.reqids_add(deadlock_req, {:deadlock, req_info}, reqs1)
+      end
+
+    wait_for_response(reqs, req_info, timeout)
+  end
+
+  defp wait_for_response(reqs, info, timeout) do
+    case :gen_server.wait_response(reqs, timeout, true) do
+      :timeout ->
+        maybe_unsubscribe(info)
+        :timeout
+
+      {{:reply, {:deadlock, dl}}, {:deadlock, _}, _next_reqs} ->
+        maybe_unsubscribe(info)
+        {:deadlock, dl}
+
+      {{:reply, payload}, {:call, _}, _next_reqs} ->
+        maybe_unsubscribe(info)
+        {:ok, payload}
+
+      {{:error, _}, {:call, _}, _next_reqs} ->
+        maybe_unsubscribe(info)
+        :timeout
+
+      {_, _, next_reqs} ->
+        wait_for_response(next_reqs, info, timeout)
+
+      :no_request ->
+        maybe_unsubscribe(info)
+        :timeout
+    end
+  end
+
+  defp maybe_unsubscribe(%{monitor: monitor}) do
+    :ddtrace.unsubscribe_deadlocks(monitor)
     :ok
   end
 
+  defp maybe_unsubscribe(_), do: :ok
+
+  # ============================================================================
+  # Result Display
+  # ============================================================================
+
+  defp print_result(result) do
+    case result do
+      {:deadlock, dl} ->
+        Logger.error("""
+
+        ╔════════════════════════════════════════════════════════════╗
+        ║   🔴 DEADLOCK DETECTED!                                   ║
+        ╚════════════════════════════════════════════════════════════╝
+        """)
+        Logger.error("Deadlock cycle:")
+        for p <- dl do
+          name = find_process_name(p)
+          Logger.error("   → #{name} (#{inspect(p)})")
+        end
+
+      {:success, replies} ->
+        Logger.info("""
+
+        ╔════════════════════════════════════════════════════════════╗
+        ║   ✅ SUCCESS! All drones completed observation.           ║
+        ╚════════════════════════════════════════════════════════════╝
+        """)
+        Logger.info("Results: #{inspect(replies)}")
+
+      :timeout ->
+        Logger.error("""
+
+        ╔════════════════════════════════════════════════════════════╗
+        ║   💀 TIMEOUT! Possible deadlock (undetected).             ║
+        ╚════════════════════════════════════════════════════════════╝
+        """)
+    end
+  end
+
+  defp find_process_name(pid) do
+    cond do
+      pid == GenServer.whereis(@elephant) -> ":elephant"
+      pid == GenServer.whereis(@drone1) -> ":drone1"
+      pid == GenServer.whereis(@drone2) -> ":drone2"
+      pid == GenServer.whereis(@controller1) -> ":controller1"
+      pid == GenServer.whereis(@controller2) -> ":controller2"
+      true -> inspect(pid)
+    end
+  end
+
+  # ============================================================================
+  # Full Setup Helper
+  # ============================================================================
+
   @doc """
   Convenience function to set up and run everything from the field node.
-  Assumes all nodes are already started.
-
-  NOTE: Logs from remote nodes will appear on this node due to RPC behavior.
-  For proper distributed logging, use manual setup (see module docs).
   """
   def full_setup_and_run do
-    # Connect all nodes
     connect_nodes()
     Process.sleep(500)
 
-    # Start elephant locally (on field)
     start_elephant()
     Process.sleep(500)
 
-    # Start patrol1 on its node using spawn to keep process alive
     Logger.info("🌐 Starting patrol1 on #{@patrol1_node}...")
-    Node.spawn(@patrol1_node, __MODULE__, :start_patrol1, [])
+    Node.spawn(@patrol1_node, __MODULE__, :start_patrol1, [[]])
     Process.sleep(1000)
 
-    # Start patrol2 on its node using spawn to keep process alive
     Logger.info("🌐 Starting patrol2 on #{@patrol2_node}...")
-    Node.spawn(@patrol2_node, __MODULE__, :start_patrol2, [])
+    Node.spawn(@patrol2_node, __MODULE__, :start_patrol2, [[]])
     Process.sleep(1000)
 
-    # Sync global registry
     :global.sync()
     Process.sleep(500)
 
-    # Trigger the elephant
     trigger_elephant()
   end
 end

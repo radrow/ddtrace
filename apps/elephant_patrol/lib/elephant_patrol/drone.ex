@@ -59,7 +59,7 @@ defmodule ElephantPatrol.Drone do
     elephant = Keyword.fetch!(opts, :elephant)
     controller = Keyword.fetch!(opts, :controller)
     state = %__MODULE__{name: format_name(name), elephant: elephant, controller: controller}
-    Logger.info("#{@color}[#{state.name}] 🚁 Drone initialized | elephant=#{inspect(elephant)} controller=#{inspect(controller)}#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🚁 Drone initialized | pid=#{inspect(self())}, elephant=#{inspect(elephant)} controller=#{inspect(controller)}#{@reset}")
     {:ok, state}
   end
 

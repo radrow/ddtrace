@@ -7,11 +7,13 @@ echo "🚁 Starting PATROL1 node..."
 echo "   This node hosts Drone1 and Controller1."
 echo ""
 
-iex --sname patrol1@localhost --eval '
+EVAL_CODE='
   spawn(fn ->
     Process.sleep(2000)
     ElephantPatrol.Simulation.connect_nodes()
     ElephantPatrol.Simulation.start_patrol1()
     IO.puts("\n🚁 Patrol1 node ready!\n")
   end)
-' -S mix
+'
+
+iex --name patrol1@127.0.0.1 --cookie elephant_patrol --eval "$EVAL_CODE" -S mix

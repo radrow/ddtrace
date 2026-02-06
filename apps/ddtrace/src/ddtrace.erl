@@ -316,8 +316,10 @@ state_deadlock(DL, Data) ->
 %% function does nothing.
 send_herald(To, MsgInfo, Data) ->
     Mon = mon_of(Data, To),
+    io:format("SEND HERALD TO ~p  ==>  ~p\n", [To, Mon]),
     case Mon of
-        undefined -> ok;
+        undefined -> 
+            ok;
         _ ->
             Worker = Data#data.worker,
             Msg = ?HERALD(Worker, MsgInfo),

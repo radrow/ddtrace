@@ -59,6 +59,14 @@ Start each node in a separate terminal:
 ./apps/elephant_patrol/scripts/start_patrol2.sh
 ```
 
+For **monitoring with ddtrace** (deadlock detection), add the `--monitored` flag:
+
+```bash
+./apps/elephant_patrol/scripts/start_field.sh --monitored
+./apps/elephant_patrol/scripts/start_patrol1.sh --monitored
+./apps/elephant_patrol/scripts/start_patrol2.sh --monitored
+```
+
 Then run these commands in each node's iex session:
 
 ```elixir
@@ -75,7 +83,9 @@ ElephantPatrol.Simulation.connect_nodes()
 ElephantPatrol.Simulation.start_patrol2()
 
 # On any node (after all processes started):
-ElephantPatrol.Simulation.run_simulation()
+ElephantPatrol.trigger_elephant()              # Without monitoring
+# OR
+ElephantPatrol.trigger_elephant(monitored: true)  # With deadlock detection
 ```
 
 With this approach, each node shows its own logs locally.
@@ -89,6 +99,13 @@ ElephantPatrol.Simulation.full_setup_and_run()
 ```
 
 Note: With this approach, logs from remote nodes will appear on the field node.
+
+## Deadlock Detection
+
+When run with `monitored: true`, the system uses the `ddtrace` monitoring framework to detect the deadlock:
+
+- Without monitoring: The system will timeout after 20 seconds
+- With monitoring: The system will detect the deadlock and report it immediately with cycle information
 
 ## Manual Testing
 

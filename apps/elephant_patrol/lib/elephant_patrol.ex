@@ -22,6 +22,9 @@ defmodule ElephantPatrol do
 
   @doc """
   Triggers the elephant to destroy crops and watches the patrol system respond.
+
+  Options:
+  - `:monitored` - if true, uses ddtrace to detect deadlocks (default: false)
   """
-  defdelegate trigger_elephant(), to: ElephantPatrol.Simulation
+  defdelegate trigger_elephant(opts \\ []), to: ElephantPatrol.Simulation
 end
