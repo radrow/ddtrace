@@ -60,9 +60,8 @@ monitored `gen_server` is passed as a parameter.
 
 Monitors recognise each other via a *monitor registry* which maps generic
 servers' PIDs to their monitors. The registry is implemented in the `mon_reg`
-module and its reference needs to be passed as argument to each monitor on
-startup. Monitors take care of registering themselves in the registry. It is
-important that all monitors in the system use the same registry.
+module using `pg` process groups. Monitors take care of registering themselves
+in the registry automatically.
 
 In order to receive a deadlock notification, the user needs to register itself
 as a subscriber to a particular monitor. One would normally subscribe to a
@@ -79,10 +78,8 @@ server with DDTrace:
 %% Start the service
 {ok, P} = gen_server:start(my_gen_server_module, []),
 
-%% Start the mon register
-{ok, MonReg} = mon_reg:start_link(),
 %% Start the monitor
-{ok, M} = ddtrace:start_link(P, MonReg),
+{ok, M} = ddtrace:start_link(P),
 
 %% Subscribe to deadlocks
 ReqM = ddtrace:subscribe_deadlocks(M),

@@ -1,5 +1,17 @@
 -define(LOG_INDENT_SIZE, '$log_indent_size').
 
+%% Debug logging macro. Set DDT_DEBUG to true to enable verbose debug output.
+%% Usage: ?DDT_DEBUG("format string ~p", [Args]).
+-ifndef(DDT_DEBUG).
+-define(DDT_DEBUG, false).
+-endif.
+
+-if(?DDT_DEBUG).
+-define(DDT_DBG(Fmt, Args), logger:debug(Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-else.
+-define(DDT_DBG(_Fmt, _Args), ok).
+-endif.
+
 -define(RECV_INFO(MsgInfo), {'$ddt_recv', MsgInfo}).
 -define(SEND_INFO(To, MsgInfo), {'$ddt_send', To, MsgInfo}).
 -define(PROBE(Probe, Vis), {'$ddt_probe', Probe, Vis}).

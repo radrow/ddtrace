@@ -7,12 +7,7 @@ echo "🚁 Starting PATROL1 node..."
 echo "   This node hosts Drone1 and Controller1."
 echo ""
 
-EVAL_CODE='  case :pg.start_link(:mon_reg_scope) do
-    {:ok, _pid} -> IO.puts("✓ Started pg scope: mon_reg_scope")
-    {:error, {:already_started, _pid}} -> IO.puts("✓ pg scope already running: mon_reg_scope")
-    error -> IO.puts("✗ Failed to start pg scope: #{inspect(error)}")
-  end
-  spawn(fn ->
+EVAL_CODE='  spawn(fn ->
     Process.sleep(2000)
     ElephantPatrol.Simulation.connect_nodes()
     ElephantPatrol.Simulation.start_patrol1()

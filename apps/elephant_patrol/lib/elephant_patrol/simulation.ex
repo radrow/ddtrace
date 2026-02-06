@@ -269,9 +269,11 @@ defmodule ElephantPatrol.Simulation do
   defp setup_monitors(true, global_names) do
     Logger.info("🔍 Setting up distributed monitors...")
 
-    # Start monitor registry on current node
-    {:ok, mon_reg} = :mon_reg.start_link()
-    Logger.info("🔍 Created mon_reg: #{inspect(mon_reg)}")
+    # Ensure pg scope is running on all connected nodes
+    :mon_reg.ensure_started()
+    for node <- Node.list() do
+      :rpc.call(node, :mon_reg, :ensure_started, [])
+    end
 
     # Group global names by their target node
     names_by_node =
@@ -292,13 +294,11 @@ defmodule ElephantPatrol.Simulation do
     monitors =
       Enum.reduce(names_by_node, %{}, fn {target_node, node_names}, acc ->
         if target_node == node() do
-          # Local processes - create monitors directly
           Logger.info("🔍 Creating monitors for local processes on #{target_node}...")
-          create_local_monitors(node_names, mon_reg, acc)
+          create_local_monitors(node_names, acc)
         else
-          # Remote processes - use RPC to create monitors on that node
           Logger.info("🔍 Creating monitors for remote processes on #{target_node} via RPC...")
-          create_remote_monitors(target_node, node_names, mon_reg, acc)
+          create_remote_monitors(target_node, node_names, acc)
         end
       end)
 
@@ -308,18 +308,18 @@ defmodule ElephantPatrol.Simulation do
     # Verify all monitors are registered
     Logger.info("🔍 Verifying monitor registrations...")
     for {global_name, monitor} <- monitors do
-      lookup = :mon_reg.mon_of(mon_reg, global_name)
+      lookup = :mon_reg.mon_of(global_name)
       Logger.info("   #{inspect(global_name)} => #{inspect(lookup)} (expected: #{inspect(monitor)})")
     end
 
     Logger.info("🔍 All monitors created: #{inspect(monitors)}")
 
-    %{mon_reg: mon_reg, monitors: monitors}
+    %{monitors: monitors}
   end
 
-  defp create_local_monitors(global_names, mon_reg, acc) do
+  defp create_local_monitors(global_names, acc) do
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
-      case :ddtrace.start_link(global_name, mon_reg, []) do
+      case :ddtrace.start_link(global_name, []) do
         {:ok, monitor} ->
           Logger.info("   ✓ Monitor #{inspect(monitor)} for local #{inspect(global_name)}")
           Map.put(inner_acc, global_name, monitor)
@@ -330,13 +330,12 @@ defmodule ElephantPatrol.Simulation do
     end)
   end
 
-  defp create_remote_monitors(target_node, global_names, mon_reg, acc) do
+  defp create_remote_monitors(target_node, global_names, acc) do
     # For each remote global name, we need to spawn a monitor on that node
     # The monitor must be local to the process it's monitoring
     # Use :start instead of :start_link to avoid linking issues with RPC
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
-      # Use RPC to start the monitor on the remote node
-      case :rpc.call(target_node, :ddtrace, :start, [global_name, mon_reg, []]) do
+      case :rpc.call(target_node, :ddtrace, :start, [global_name, []]) do
         {:ok, monitor} ->
           Logger.info("   ✓ Monitor #{inspect(monitor)} for remote #{inspect(global_name)} on #{target_node}")
           Map.put(inner_acc, global_name, monitor)
@@ -352,11 +351,14 @@ defmodule ElephantPatrol.Simulation do
 
   defp cleanup_monitors(nil), do: :ok
 
-  defp cleanup_monitors(%{mon_reg: mon_reg, monitors: monitors}) do
+  defp cleanup_monitors(%{monitors: monitors}) do
     Enum.each(monitors, fn {_global_name, monitor} ->
-      :ddtrace.stop_tracer(monitor)
+      try do
+        :ddtrace.stop_tracer(monitor)
+      catch
+        :exit, _ -> :ok
+      end
     end)
-    GenServer.stop(mon_reg)
   end
 
   # ============================================================================
@@ -375,8 +377,8 @@ defmodule ElephantPatrol.Simulation do
         prepare_request(drone, ctx)
       end)
 
-    # Wait for all responses
-    results = Enum.map(reqs, &await_response(&1, timeout))
+    # Wait for all responses, short-circuiting on deadlock
+    results = collect_results(reqs, timeout)
 
     # Check for deadlock first
     case Enum.find(results, &match?({:deadlock, _}, &1)) do
@@ -421,6 +423,20 @@ defmodule ElephantPatrol.Simulation do
     wait_for_response(reqs, req_info, timeout)
   end
 
+  defp collect_results([], _timeout), do: []
+
+  defp collect_results([req | rest], timeout) do
+    case await_response(req, timeout) do
+      {:deadlock, _} = dl ->
+        # Short-circuit: unsubscribe remaining requests and return deadlock
+        Enum.each(rest, &maybe_unsubscribe/1)
+        [dl]
+
+      result ->
+        [result | collect_results(rest, timeout)]
+    end
+  end
+
   defp wait_for_response(reqs, info, timeout) do
     case :gen_server.wait_response(reqs, timeout, true) do
       :timeout ->
@@ -449,7 +465,12 @@ defmodule ElephantPatrol.Simulation do
   end
 
   defp maybe_unsubscribe(%{monitor: monitor}) do
-    :ddtrace.unsubscribe_deadlocks(monitor)
+    try do
+      :ddtrace.unsubscribe_deadlocks(monitor)
+    catch
+      :exit, _ -> :ok
+    end
+
     :ok
   end
 

@@ -195,28 +195,26 @@ defmodule MicrochipFactory do
   defp setup_monitors(false, _pids), do: :nil
 
   defp setup_monitors(true, pids) do
-    {:ok, mon_reg} = :mon_reg.start_link()
+    :mon_reg.ensure_started()
 
     monitors =
       pids
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn pid, acc ->
-        {:ok, monitor} = :ddtrace.start_link(pid, mon_reg, [])
+        {:ok, monitor} = :ddtrace.start_link(pid, [])
         Map.put(acc, pid, monitor)
       end)
 
-    %{mon_reg: mon_reg, monitors: monitors}
+    %{monitors: monitors}
   end
 
 
   defp cleanup_monitors(nil), do: :ok
 
-  defp cleanup_monitors(%{mon_reg: mon_reg, monitors: monitors}) do
+  defp cleanup_monitors(%{monitors: monitors}) do
     Enum.each(monitors, fn {_pid, monitor} ->
       :ddtrace.stop_tracer(monitor)
     end)
-
-    :gen_server.stop(mon_reg)
   end
 
 
