@@ -223,12 +223,12 @@ defmodule ElephantPatrol.Simulation do
     ╚════════════════════════════════════════════════════════════╝
     """)
 
-    # Collect all process PIDs
-    pids = collect_all_pids()
-    Logger.info("🔍 Collected PIDs: #{inspect(pids)}")
+    # Collect all global names
+    global_names = collect_all_global_names()
+    Logger.info("🔍 Collected global names: #{inspect(global_names)}")
 
     # Setup monitors (like microchip_factory does)
-    ctx = setup_monitors(monitored, pids)
+    ctx = setup_monitors(monitored, global_names)
 
     # Prepare calls to both drones
     calls = [@drone1, @drone2]
@@ -249,20 +249,14 @@ defmodule ElephantPatrol.Simulation do
     result
   end
 
-  defp collect_all_pids do
-    # Get all the PIDs we need to monitor
-    elephant_pid = GenServer.whereis(@elephant)
-    drone1_pid = GenServer.whereis(@drone1)
-    drone2_pid = GenServer.whereis(@drone2)
-    controller1_pid = GenServer.whereis(@controller1)
-    controller2_pid = GenServer.whereis(@controller2)
-
+  defp collect_all_global_names do
+    # Return global names instead of PIDs
     %{
-      elephant: elephant_pid,
-      drone1: drone1_pid,
-      drone2: drone2_pid,
-      controller1: controller1_pid,
-      controller2: controller2_pid
+      elephant: @elephant,
+      drone1: @drone1,
+      drone2: @drone2,
+      controller1: @controller1,
+      controller2: @controller2
     }
   end
 
@@ -270,36 +264,41 @@ defmodule ElephantPatrol.Simulation do
   # Monitoring Setup
   # ============================================================================
 
-  defp setup_monitors(false, _pids), do: nil
+  defp setup_monitors(false, _global_names), do: nil
 
-  defp setup_monitors(true, pids) do
+  defp setup_monitors(true, global_names) do
     Logger.info("🔍 Setting up distributed monitors...")
 
     # Start monitor registry on current node
     {:ok, mon_reg} = :mon_reg.start_link()
     Logger.info("🔍 Created mon_reg: #{inspect(mon_reg)}")
 
-    # Group PIDs by node
-    pids_by_node =
-      pids
+    # Group global names by their target node
+    names_by_node =
+      global_names
       |> Map.values()
       |> Enum.filter(& &1)  # Remove nils
-      |> Enum.group_by(&node/1)
+      |> Enum.group_by(fn global_name ->
+        case :global.whereis_name(elem(global_name, 1)) do
+          :undefined -> nil
+          pid -> node(pid)
+        end
+      end)
+      |> Map.delete(nil)  # Remove any undefined processes
 
-    Logger.info("🔍 PIDs by node: #{inspect(pids_by_node)}")
+    Logger.info("🔍 Global names by node: #{inspect(names_by_node)}")
 
-    # Create monitors for each PID - we need to ensure ordering
-    # First create all monitors, then verify they're all registered
+    # Create monitors for each global name
     monitors =
-      Enum.reduce(pids_by_node, %{}, fn {target_node, node_pids}, acc ->
+      Enum.reduce(names_by_node, %{}, fn {target_node, node_names}, acc ->
         if target_node == node() do
-          # Local PIDs - create monitors directly
-          Logger.info("🔍 Creating monitors for local PIDs on #{target_node}...")
-          create_local_monitors(node_pids, mon_reg, acc)
+          # Local processes - create monitors directly
+          Logger.info("🔍 Creating monitors for local processes on #{target_node}...")
+          create_local_monitors(node_names, mon_reg, acc)
         else
-          # Remote PIDs - use RPC to create monitors on that node
-          Logger.info("🔍 Creating monitors for remote PIDs on #{target_node} via RPC...")
-          create_remote_monitors(target_node, node_pids, mon_reg, acc)
+          # Remote processes - use RPC to create monitors on that node
+          Logger.info("🔍 Creating monitors for remote processes on #{target_node} via RPC...")
+          create_remote_monitors(target_node, node_names, mon_reg, acc)
         end
       end)
 
@@ -308,9 +307,9 @@ defmodule ElephantPatrol.Simulation do
 
     # Verify all monitors are registered
     Logger.info("🔍 Verifying monitor registrations...")
-    for {pid, monitor} <- monitors do
-      lookup = :mon_reg.mon_of(mon_reg, pid)
-      Logger.info("   #{inspect(pid)} => #{inspect(lookup)} (expected: #{inspect(monitor)})")
+    for {global_name, monitor} <- monitors do
+      lookup = :mon_reg.mon_of(mon_reg, global_name)
+      Logger.info("   #{inspect(global_name)} => #{inspect(lookup)} (expected: #{inspect(monitor)})")
     end
 
     Logger.info("🔍 All monitors created: #{inspect(monitors)}")
@@ -318,34 +317,34 @@ defmodule ElephantPatrol.Simulation do
     %{mon_reg: mon_reg, monitors: monitors}
   end
 
-  defp create_local_monitors(pids, mon_reg, acc) do
-    Enum.reduce(pids, acc, fn pid, inner_acc ->
-      case :ddtrace.start_link(pid, mon_reg, []) do
+  defp create_local_monitors(global_names, mon_reg, acc) do
+    Enum.reduce(global_names, acc, fn global_name, inner_acc ->
+      case :ddtrace.start_link(global_name, mon_reg, []) do
         {:ok, monitor} ->
-          Logger.info("   ✓ Monitor #{inspect(monitor)} for local #{inspect(pid)}")
-          Map.put(inner_acc, pid, monitor)
+          Logger.info("   ✓ Monitor #{inspect(monitor)} for local #{inspect(global_name)}")
+          Map.put(inner_acc, global_name, monitor)
         {:error, reason} ->
-          Logger.error("   ✗ Failed to monitor #{inspect(pid)}: #{inspect(reason)}")
+          Logger.error("   ✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
       end
     end)
   end
 
-  defp create_remote_monitors(target_node, pids, mon_reg, acc) do
-    # For each remote PID, we need to spawn a monitor on that node
-    # The monitor must be local to the PID it's monitoring
+  defp create_remote_monitors(target_node, global_names, mon_reg, acc) do
+    # For each remote global name, we need to spawn a monitor on that node
+    # The monitor must be local to the process it's monitoring
     # Use :start instead of :start_link to avoid linking issues with RPC
-    Enum.reduce(pids, acc, fn pid, inner_acc ->
+    Enum.reduce(global_names, acc, fn global_name, inner_acc ->
       # Use RPC to start the monitor on the remote node
-      case :rpc.call(target_node, :ddtrace, :start, [pid, mon_reg, []]) do
+      case :rpc.call(target_node, :ddtrace, :start, [global_name, mon_reg, []]) do
         {:ok, monitor} ->
-          Logger.info("   ✓ Monitor #{inspect(monitor)} for remote #{inspect(pid)} on #{target_node}")
-          Map.put(inner_acc, pid, monitor)
+          Logger.info("   ✓ Monitor #{inspect(monitor)} for remote #{inspect(global_name)} on #{target_node}")
+          Map.put(inner_acc, global_name, monitor)
         {:error, reason} ->
-          Logger.error("   ✗ Failed to monitor #{inspect(pid)}: #{inspect(reason)}")
+          Logger.error("   ✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
         {:badrpc, reason} ->
-          Logger.error("   ✗ RPC failed for #{inspect(pid)}: #{inspect(reason)}")
+          Logger.error("   ✗ RPC failed for #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
       end
     end)
@@ -354,7 +353,7 @@ defmodule ElephantPatrol.Simulation do
   defp cleanup_monitors(nil), do: :ok
 
   defp cleanup_monitors(%{mon_reg: mon_reg, monitors: monitors}) do
-    Enum.each(monitors, fn {_pid, monitor} ->
+    Enum.each(monitors, fn {_global_name, monitor} ->
       :ddtrace.stop_tracer(monitor)
     end)
     GenServer.stop(mon_reg)
@@ -400,8 +399,8 @@ defmodule ElephantPatrol.Simulation do
 
   defp prepare_request(drone, %{monitors: monitors}) do
     # With monitoring - also subscribe to deadlocks
-    drone_pid = GenServer.whereis(drone) || raise "unknown drone #{inspect(drone)}"
-    monitor = Map.fetch!(monitors, drone_pid)
+    # drone is already a global name like {:global, :drone1}
+    monitor = Map.fetch!(monitors, drone)
 
     call_req = :gen_server.send_request(drone, :observe)
     deadlock_req = :ddtrace.subscribe_deadlocks(monitor)

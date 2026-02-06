@@ -233,6 +233,12 @@ defmodule MicrochipFactory do
       {:deadlock, dl} ->
         IO.puts("\e[31;1mDeadlock\e[0m:")
 
+        # Handle both {foreign, [pids]} and [pids] formats
+        dl = case dl do
+          {:foreign, pids} -> pids
+          pids when is_list(pids) -> pids
+        end
+
         dl =
           for p <- dl do
             case Registry.keys(:factory, p) do

@@ -10,36 +10,37 @@
 
 -include("ddtrace.hrl").
 
--export([start_link/2]).
+-export([start_link/3]).
 -export([init/1, callback_mode/0]).
 -export([handle_event/4, terminate/3]).
 
-start_link(Worker, MonReg) ->
-    gen_statem:start_link(?MODULE, {Worker, MonReg}, []).
+start_link(Worker, WorkerPid, MonReg) ->
+    gen_statem:start_link(?MODULE, {Worker, WorkerPid, MonReg}, []).
 
 callback_mode() ->
     handle_event_function.
 
-init({Worker, MonReg}) ->
+init({Worker, WorkerPid, MonReg}) ->
     process_flag(priority, low),
 
-    init_trace(Worker),
+    init_trace(WorkerPid),
     process_flag(trap_exit, true),
-    erlang:monitor(process, Worker),
+    erlang:monitor(process, WorkerPid),
 
     Monitor = mon_reg:mon_of(MonReg, Worker),
 
     Data = 
      #{worker => Worker,
+       worker_pid => WorkerPid,
        monitor => Monitor,
        mon_reg => MonReg,
        requests => #{}
       },
     {ok, unlocked, Data}.
 
-init_trace(Worker) ->
+init_trace(WorkerPid) ->
     TraceOpts = ['send', 'receive', strict_monotonic_timestamp],
-    erlang:trace(Worker, true, TraceOpts),
+    erlang:trace(WorkerPid, true, TraceOpts),
     
     erlang:trace_pattern(
       'send',

@@ -166,10 +166,11 @@ handle_cast(_Msg, State) ->
 
 get_waitee(Who, State = #state{reqid_map = WaitsRev}) when is_reference(Who) ->
     case maps:find(Who, WaitsRev) of
-        {ok, WhoPid} -> get_waitee(WhoPid, State);
+        {ok, WhoName} -> get_waitee(WhoName, State);
         _ -> undefined
     end;
-get_waitee(Who, #state{waitees = Waits}) when is_pid(Who) ->
+get_waitee(Who, #state{waitees = Waits}) ->
+    %% Who can be a PID or process name (global name, atom, etc)
     case lists:member(Who, Waits) of
         true -> {ok, Who};
         _ -> undefined
@@ -180,7 +181,8 @@ add_waitee(Who, ReqId, State) ->
         undefined -> State;
         _ -> add_monitored_waitee(Who, ReqId, State)
     end.
-add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when is_pid(Who) ->
+add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
+    %% Who can be a PID or process name (global name, atom, etc)
     case get_waitee(Who, State) of
         {ok, _} -> error({already_waiting, Who});
         _ -> ok
@@ -196,11 +198,12 @@ remove_waitee(Who, State) ->
         _ -> remove_monitored_waitee(Who, State)
     end.
 remove_monitored_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
+    %% Who can be a PID or process name (global name, atom, etc)
     case get_waitee(Who, State) of
         undefined -> error({not_waiting, Who});
-        {ok, WhoPid} ->
-            NewWaits = lists:delete(WhoPid, Waits),
-            NewReqMap = maps:filter(fun(_K, V) -> V =/= WhoPid end, ReqMap),
+        {ok, WhoName} ->
+            NewWaits = lists:delete(WhoName, Waits),
+            NewReqMap = maps:filter(fun(_K, V) -> V =/= WhoName end, ReqMap),
             State#state{waitees = NewWaits, reqid_map = NewReqMap}
     end.
                                               
