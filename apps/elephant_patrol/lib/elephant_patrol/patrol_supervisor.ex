@@ -47,10 +47,10 @@ defmodule ElephantPatrol.PatrolSupervisor do
       Supervisor.terminate_child(supervisor, id)
     end
 
-    # Restart any stopped children, in start order
-    for {id, pid, _type, _modules} <- Enum.reverse(children), !is_pid(pid) do
-      Supervisor.restart_child(supervisor, id)
-    end
+    # # Restart any stopped children, in start order
+    # for {id, pid, _type, _modules} <- Enum.reverse(children), !is_pid(pid) do
+    #   Supervisor.restart_child(supervisor, id)
+    # end
 
     :ok
   end

@@ -9,7 +9,7 @@ defmodule ElephantPatrol.Controller do
   require Logger
 
   # Magenta color for controllers
-  @color IO.ANSI.magenta()
+  @color "#{IO.ANSI.magenta()}#{IO.ANSI.bright()}"
   @reset IO.ANSI.reset()
 
   defstruct [:name, :drone, :confirming_drone]
@@ -49,7 +49,7 @@ defmodule ElephantPatrol.Controller do
     drone = Keyword.fetch!(opts, :drone)
     confirming_drone = Keyword.fetch!(opts, :confirming_drone)
     state = %__MODULE__{name: format_name(name), drone: drone, confirming_drone: confirming_drone}
-    Logger.debug("#{@color}[#{state.name}] 🎮 Controller initialized#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🎮 Controller initialized#{@reset}")
     {:ok, state}
   end
 

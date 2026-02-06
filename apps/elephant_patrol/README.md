@@ -44,8 +44,6 @@ A distributed Elixir application for monitoring elephants with drones.
 
 ## Running the Distributed System
 
-### Option 1: Manual Setup (Recommended - Proper Distributed Logging)
-
 Start each node in a separate terminal:
 
 ```bash
@@ -59,46 +57,13 @@ Start each node in a separate terminal:
 ./apps/elephant_patrol/scripts/start_patrol2.sh
 ```
 
-For **monitoring with ddtrace** (deadlock detection), add the `--monitored` flag:
-
-```bash
-./apps/elephant_patrol/scripts/start_field.sh --monitored
-./apps/elephant_patrol/scripts/start_patrol1.sh --monitored
-./apps/elephant_patrol/scripts/start_patrol2.sh --monitored
-```
-
-Then run these commands in each node's iex session:
+Then run the following command in the `field` iex session:
 
 ```elixir
-# On field@localhost (Terminal 1):
-ElephantPatrol.Simulation.connect_nodes()
-ElephantPatrol.Simulation.start_elephant()
-
-# On patrol1@localhost (Terminal 2):
-ElephantPatrol.Simulation.connect_nodes()
-ElephantPatrol.Simulation.start_patrol1()
-
-# On patrol2@localhost (Terminal 3):
-ElephantPatrol.Simulation.connect_nodes()
-ElephantPatrol.Simulation.start_patrol2()
-
-# On any node (after all processes started):
-ElephantPatrol.trigger_elephant()              # Without monitoring
+ElephantPatrol.trigger_elephant()                 # Without monitoring
 # OR
 ElephantPatrol.trigger_elephant(monitored: true)  # With deadlock detection
 ```
-
-With this approach, each node shows its own logs locally.
-
-### Option 2: Automatic Setup (Quick Start)
-
-Start all three nodes (same as above), then from the field node run:
-
-```elixir
-ElephantPatrol.Simulation.full_setup_and_run()
-```
-
-Note: With this approach, logs from remote nodes will appear on the field node.
 
 ## Deadlock Detection
 
@@ -106,24 +71,6 @@ When run with `monitored: true`, the system uses the `ddtrace` monitoring framew
 
 - Without monitoring: The system will timeout after 20 seconds
 - With monitoring: The system will detect the deadlock and report it immediately with cycle information
-
-## Manual Testing
-
-You can also test components individually:
-
-```elixir
-# Connect nodes manually
-ElephantPatrol.Simulation.connect_nodes()
-
-# Start processes on each node
-ElephantPatrol.Simulation.start_elephant()  # on field
-ElephantPatrol.Simulation.start_patrol1()   # on patrol1
-ElephantPatrol.Simulation.start_patrol2()   # on patrol2
-
-# Interact with the elephant
-ElephantPatrol.Elephant.destroy_crops({:global, :elephant})
-ElephantPatrol.Drone.observe({:global, :drone1})
-```
 
 ## Message Flow
 

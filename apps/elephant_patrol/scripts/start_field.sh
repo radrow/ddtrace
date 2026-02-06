@@ -3,12 +3,13 @@
 
 cd "$(dirname "$0")/../../.."
 
-echo "🌾 Starting FIELD node..."
-echo "   This node hosts the Elephant."
-echo ""
-echo "   After all nodes are ready, run:"
-echo "   ElephantPatrol.trigger_elephant()              # Without monitoring"
-echo "   ElephantPatrol.trigger_elephant(monitored: true)   # With ddtrace"
+echo "╔════════════════════════════════════════════════════════════════════════╗"
+echo "║   Starting FIELD node...                                               ║"
+echo "║   After all nodes are ready, run:                                      ║"
+echo "║                                                                        ║"
+echo "║   ElephantPatrol.trigger_elephant()                  # Without ddtrace ║"
+echo "║   ElephantPatrol.trigger_elephant(monitored: true)   # With ddtrace    ║"
+echo "╚════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
 EVAL_CODE='
@@ -16,7 +17,6 @@ EVAL_CODE='
     Process.sleep(2000)
     ElephantPatrol.Simulation.connect_nodes()
     ElephantPatrol.Simulation.start_elephant()
-    IO.puts("\n🌾 Field node ready!\n")
   end)
 '
 

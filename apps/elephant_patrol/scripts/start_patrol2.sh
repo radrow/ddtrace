@@ -11,7 +11,6 @@ EVAL_CODE='  spawn(fn ->
     Process.sleep(2000)
     ElephantPatrol.Simulation.connect_nodes()
     ElephantPatrol.Simulation.start_patrol2()
-    IO.puts("\n🚁 Patrol2 node ready!\n")
   end)
 '
 

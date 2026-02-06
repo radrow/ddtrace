@@ -180,43 +180,24 @@ defmodule ElephantPatrol.Simulation do
   """
   def trigger_elephant(opts \\ []) do
     monitored = Keyword.get(opts, :monitored, false)
-
-    Logger.info("""
-
-    ╔════════════════════════════════════════════════════════════╗
-    ║           🐘 TRIGGERING THE ELEPHANT 🐘                    ║
-    ║           Monitoring: #{if monitored, do: "ENABLED", else: "DISABLED"}                        ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
-
+    n_calls = Keyword.get(opts, :calls, 1)
+    
     case wait_for_processes(5_000) do
-      :ok -> do_trigger_elephant(monitored)
+      :ok -> do_trigger_elephant(monitored, n_calls)
       {:error, :timeout, missing} ->
         Logger.error("Cannot trigger elephant. Missing processes: #{inspect(missing)}")
         {:error, :missing_processes}
     end
   end
 
-  defp do_trigger_elephant(monitored) do
+  defp do_trigger_elephant(monitored, n_calls) do
     Process.sleep(500)
-
-    # Elephant starts destroying crops!
-    Logger.info("""
-
-    ╔════════════════════════════════════════════════════════════╗
-    ║   💥 THE ELEPHANT IS DESTROYING CROPS! 💥                  ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
+    
     ElephantPatrol.Elephant.destroy_crops(@elephant)
     Process.sleep(1000)
 
     # Both drones observe SIMULTANEOUSLY - this creates the deadlock!
-    Logger.info("""
-
-    ╔════════════════════════════════════════════════════════════╗
-    ║   🚁 DISPATCHING BOTH DRONES SIMULTANEOUSLY               ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
+    Logger.info("#{IO.ANSI.bright()}🚁 DISPATCHING DRONES#{IO.ANSI.reset()}")
 
     # Collect all global names
     global_names = collect_all_global_names()
@@ -225,7 +206,13 @@ defmodule ElephantPatrol.Simulation do
     ctx = setup_monitors(monitored, global_names)
 
     # Prepare calls to both drones
-    calls = [@drone1, @drone2]
+    calls = case n_calls do
+              1 -> [@drone1]
+              2 -> [@drone1, @drone2]
+              _ ->
+                Logger.error("Invalid number of calls. Defaulting to 1")
+                [@drone1]
+            end
 
     # Execute the calls
     result = do_calls(calls, timeout: 20_000, monitor_ctx: ctx)
@@ -240,13 +227,6 @@ defmodule ElephantPatrol.Simulation do
     if match?({:deadlock, _}, result) do
       recover_from_deadlock()
     end
-
-    Logger.info("""
-
-    ╔════════════════════════════════════════════════════════════╗
-    ║           🎬 DEMONSTRATION COMPLETE                        ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
 
     result
   end
@@ -313,26 +293,26 @@ defmodule ElephantPatrol.Simulation do
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
       case :ddtrace.start_link(global_name, []) do
         {:ok, monitor} ->
-          Logger.debug("   Monitor attached to #{inspect(global_name)}")
+          Logger.debug("Monitor attached to #{inspect(global_name)}")
           Map.put(inner_acc, global_name, monitor)
         {:error, reason} ->
-          Logger.error("   ✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
+          Logger.error("✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
       end
     end)
-  end
+   end
 
   defp create_remote_monitors(target_node, global_names, acc) do
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
       case :rpc.call(target_node, :ddtrace, :start, [global_name, []]) do
         {:ok, monitor} ->
-          Logger.debug("   Monitor attached to #{inspect(global_name)} on #{target_node}")
+          Logger.debug("Monitor attached to #{inspect(global_name)} on #{target_node}")
           Map.put(inner_acc, global_name, monitor)
         {:error, reason} ->
-          Logger.error("   ✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
+          Logger.error("✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
         {:badrpc, reason} ->
-          Logger.error("   ✗ RPC failed for #{inspect(global_name)}: #{inspect(reason)}")
+          Logger.error("✗ RPC failed for #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
       end
     end)
@@ -500,7 +480,7 @@ defmodule ElephantPatrol.Simulation do
         Logger.error("""
 
         ╔════════════════════════════════════════════════════════════╗
-        ║   🔴 DEADLOCK DETECTED!                                   ║
+        ║   💀 DEADLOCK DETECTED!                                    ║
         ╚════════════════════════════════════════════════════════════╝
         """)
         cycle =
@@ -513,7 +493,7 @@ defmodule ElephantPatrol.Simulation do
         Logger.info("""
 
         ╔════════════════════════════════════════════════════════════╗
-        ║   ✅ SUCCESS — All drones completed observation            ║
+        ║   ✅ SUCCESS — All drones completed observation             ║
         ╚════════════════════════════════════════════════════════════╝
         """)
 
@@ -521,7 +501,7 @@ defmodule ElephantPatrol.Simulation do
         Logger.error("""
 
         ╔════════════════════════════════════════════════════════════╗
-        ║   💀 TIMEOUT! Possible deadlock (undetected).             ║
+        ║   ⏰ TIMEOUT!                                              ║
         ╚════════════════════════════════════════════════════════════╝
         """)
     end

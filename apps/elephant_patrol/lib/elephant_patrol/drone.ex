@@ -9,7 +9,7 @@ defmodule ElephantPatrol.Drone do
   require Logger
 
   # Cyan color for drones
-  @color IO.ANSI.cyan()
+  @color "#{IO.ANSI.cyan()}#{IO.ANSI.bright()}"
   @reset IO.ANSI.reset()
 
   defstruct [:name, :elephant, :controller]
@@ -59,7 +59,7 @@ defmodule ElephantPatrol.Drone do
     elephant = Keyword.fetch!(opts, :elephant)
     controller = Keyword.fetch!(opts, :controller)
     state = %__MODULE__{name: format_name(name), elephant: elephant, controller: controller}
-    Logger.debug("#{@color}[#{state.name}] 🚁 Drone initialized#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🚁 Drone initialized#{@reset}")
     {:ok, state}
   end
 
@@ -72,10 +72,10 @@ defmodule ElephantPatrol.Drone do
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
-    Logger.info("#{@color}[#{state.name}] � Checking elephant for confirmation...#{@reset}")
+    Logger.info("#{@color}[#{state.name}] � Received elephant confirmation request...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
-    Logger.info("#{@color}[#{state.name}] 🔎 Confirmed: #{is_destroying}#{@reset}")
+    Logger.info("#{@color}[#{state.name}] 🔎 Confirmation verdict: #{is_destroying}#{@reset}")
     {:reply, is_destroying, state}
   end
 
@@ -88,12 +88,12 @@ defmodule ElephantPatrol.Drone do
         {:ok, :calm}
 
       :destroying_crops ->
-        Logger.warning("#{@color}[#{state.name}] ⚠️  Elephant destroying crops! Requesting scare permission...#{@reset}")
+        Logger.info("#{@color}[#{state.name}] ⚠️ Elephant destroying crops! Requesting scare permission...#{@reset}")
 
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
             ElephantPatrol.Elephant.scare(state.elephant)
-            Logger.info("#{@color}[#{state.name}] ✅ Elephant scared off!#{@reset}")
+            Logger.info("#{@color}[#{state.name}] ✅ Affirmative. Scaring off the elephant: AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
             {:ok, :scared_off}
 
           :rejected ->
