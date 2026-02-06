@@ -386,7 +386,8 @@ handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
 handle_send(_To, ?QUERY_INFO(ReqId), Data) ->
     state_lock(ReqId, Data);
 handle_send(To, ?RESP_INFO(_ReqId), Data) ->
-    state_unwait(To, Data).
+    NormalizedTo = normalize_worker(To, Data),
+    state_unwait(NormalizedTo, Data).
 
 state_wait(Who, ReqId, Data) ->
     call_mon_state({wait, Who, ReqId}, Data).
@@ -408,15 +409,16 @@ state_deadlock(DL, Data) ->
 %% worker process, not the monitor directly. If [To] is not monitored, the
 %% function does nothing.
 send_herald(To, MsgInfo, Data) ->
-    Mon = mon_of(Data, To),
+    NormalizedTo = normalize_worker(To, Data),
+    Mon = mon_of(Data, NormalizedTo),
     case Mon of
         undefined -> 
-            logger:debug("[~p@~p] send_herald SKIP: To=~p (no monitor found)", [Data#data.worker, node(), To]),
+            logger:debug("[~p@~p] send_herald SKIP: To=~p NormalizedTo=~p (no monitor found)", [Data#data.worker, node(), To, NormalizedTo]),
             ok;
         _ ->
             Worker = Data#data.worker,
             Msg = ?HERALD(Worker, MsgInfo),
-            logger:debug("[~p@~p] send_herald: To=~p Mon=~p MsgInfo=~p", [Data#data.worker, node(), To, Mon, MsgInfo]),
+            logger:debug("[~p@~p] send_herald: To=~p Mon=~p MsgInfo=~p", [Data#data.worker, node(), NormalizedTo, Mon, MsgInfo]),
             gen_statem:cast(Mon, Msg),
             ok
     end.

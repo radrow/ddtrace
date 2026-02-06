@@ -91,35 +91,51 @@ handle_event(info,
 %% Send query
 handle_event(info,
              _Trace = {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
-             _State,
+             State,
              _Data) ->
+    io:format("[~p] TRACER TRACE: send to ~p, ReqId=~p, State=~p~n", [_Worker, To, ReqId, State]),
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Send response (alias-based)
+%% Send response (alias-based) - lookup the actual destination PID from requests map
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS_MSG(ReqId, Msg), To, _Ts},
+             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS_MSG(ReqId, _Msg), _AliasRef, _Ts},
              State,
              Data) ->
-    handle_event(info,
-                 {trace_ts, _Worker, 'send', ?GS_RESP_MSG(ReqId, Msg), To, _Ts},
-                 State,
-                 Data);
+    %% The To field is an alias reference, not a PID. Look up the actual sender from requests map.
+    #{requests := Requests} = Data,
+    case maps:get([alias|ReqId], Requests, undefined) of
+        undefined ->
+            io:format("[~p] TRACER TRACE: send REPLY (alias) - no sender found for ReqId=~p~n", [_Worker, [alias|ReqId]]),
+            keep_state_and_data;
+        ToPid ->
+            io:format("[~p] TRACER TRACE: send REPLY (alias) to ~p, ReqId=~p, State=~p~n", [_Worker, ToPid, [alias|ReqId], State]),
+            Event = {next_event, internal, ?SEND_INFO(ToPid, ?RESP_INFO([alias|ReqId]))},
+            {keep_state_and_data, [Event]}
+    end;
 
 %% Send response (plain ReqId)
 handle_event(info,
              _Trace = {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
-             _State,
+             State,
              _Data) ->
+    io:format("[~p] TRACER TRACE: send REPLY (plain) to ~p, ReqId=~p, State=~p~n", [_Worker, To, ReqId, State]),
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Receive query
+%% Receive query (from trace) - store the sender for later reply lookup
 handle_event(info,
              _Trace = {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
-             _State,
+             State,
              Data) ->
+    io:format("[~p@~p] TRACER: RECV query FROM ~p, ReqId=~p~n", 
+              [maps:get(worker, Data), node(), From, ReqId]),
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
+    
+    %% Store the sender's PID for later reply destination lookup
+    #{requests := Requests} = Data,
+    Data1 = Data#{requests => Requests#{ReqId => From}},
+    
     case mon_of(Data, From) of
         undefined ->
             %% If the sender is not being monitored, we fake monitor herald
@@ -128,17 +144,18 @@ handle_event(info,
             gen_statem:cast(Monitor, FakeNotif);
         _Pid -> ok
     end,
-    {keep_state_and_data, [Event]};
+    
+    %% Trigger state refresh to retry postponed events
+    {next_state, state_change, Data1, [Event, {next_event, internal, {refresh_state, State}}]};
 
-%% Receive response (alias-based)
+%% Receive response (alias-based) - preserve the full [alias|ReqId] format
 handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS_MSG(ReqId, Msg), _Ts},
-             State,
-             Data) ->
-    handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_MSG(ReqId, Msg), _Ts},
-             State,
-             Data);
+             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS_MSG(ReqId, _Msg), _Ts},
+             _State,
+             _Data) ->
+    %% Keep the full [alias|ReqId] format for state matching
+    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO([alias|ReqId]))},
+    {keep_state_and_data, [Event]};
 
 %% Receive response (plain ReqId)
 handle_event(info,
@@ -167,9 +184,17 @@ handle_event(info, Trace, _State, _Data) when element(1, Trace) =:= trace_ts;
 %%%======================
 
 %% Send query
-handle_event(internal, Ev = ?SEND_INFO(_To, ?QUERY_INFO(ReqId)), unlocked, Data) ->
+handle_event(internal, Ev = ?SEND_INFO(To, ?QUERY_INFO(ReqId)), unlocked, Data) ->
+    io:format("[~p@~p] TRACER: Processing SEND_INFO to ~p, ReqId=~p, unlocked -> locked~n", 
+              [maps:get(worker, Data), node(), To, ReqId]),
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, {locked, ReqId}, Data};
+
+%% Send query when locked - will be postponed
+handle_event(internal, Ev = ?SEND_INFO(To, ?QUERY_INFO(ReqId)), {locked, LockedReqId}, Data) ->
+    io:format("[~p@~p] TRACER: SEND query to ~p, ReqId=~p POSTPONED (locked on ~p)~n", 
+              [maps:get(worker, Data), node(), To, ReqId, LockedReqId]),
+    {keep_state_and_data, postpone};
 
 %% Send response
 handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) ->
@@ -186,17 +211,48 @@ handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) 
 
 %% Receive query
 handle_event(internal, Ev = ?RECV_INFO(?QUERY_INFO(ReqId)), State, Data) ->
+    io:format("[~p@~p] TRACER: RECV query, ReqId=~p, State=~p~n", 
+              [maps:get(worker, Data), node(), ReqId, State]),
     gen_statem:cast(maps:get(monitor, Data), Ev),
+    keep_state_and_data;
+
+%% Receive query (from trace) - store the sender for later reply lookup
+handle_event(info,
+             _Trace = {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
+             State,
+             Data) ->
+    io:format("[~p@~p] TRACER: RECV query FROM ~p, ReqId=~p~n", 
+              [maps:get(worker, Data), node(), From, ReqId]),
+    Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
+    
+    %% Store the sender's PID for later reply destination lookup
     #{requests := Requests} = Data,
-    Data1 = Data#{requests => Requests#{ReqId => {}}},
+    Data1 = Data#{requests => Requests#{ReqId => From}},
+    
+    case mon_of(Data, From) of
+        undefined ->
+            %% If the sender is not being monitored, we fake monitor herald
+            FakeNotif = ?HERALD(From, ?QUERY_INFO(ReqId)),
+            Monitor = maps:get(monitor, Data),
+            gen_statem:cast(Monitor, FakeNotif);
+        _Pid -> ok
+    end,
     
     %% Trigger state refresh to retry postponed events
-    {next_state, state_change, Data1, [{next_event, internal, {refresh_state, State}}]};
+    {next_state, state_change, Data1, [Event, {next_event, internal, {refresh_state, State}}]};
 
-%% Receive response
+%% Receive response (matching locked ReqId)
 handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data) ->
+    io:format("[~p@~p] TRACER: RECV response MATCHED, ReqId=~p, locked -> unlocked~n", 
+              [maps:get(worker, Data), node(), ReqId]),
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, unlocked, Data};
+
+%% Receive response (but wrong ReqId or unlocked state) - catch all
+handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), State, Data) ->
+    io:format("[~p@~p] TRACER: RECV response MISMATCH, ReqId=~p, State=~p~n", 
+              [maps:get(worker, Data), node(), ReqId, State]),
+    {keep_state_and_data, postpone};
 
 %%%======================
 %%% handle_event: Control
@@ -205,6 +261,12 @@ handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data
 %% Forced state change to retry postponed events
 handle_event(internal, {refresh_state, NewState}, state_change, Data) ->
     {next_state, NewState, Data};
+
+%% Catch-all for debugging - log any unexpected internal events
+handle_event(internal, Ev, State, Data) ->
+    io:format("[~p@~p] TRACER: Unexpected internal event: ~p, State=~p~n", 
+              [maps:get(worker, Data), node(), Ev, State]),
+    {keep_state_and_data, postpone};
 
 %% Stop tracer
 handle_event({call, From}, stop, _State, Data) ->
