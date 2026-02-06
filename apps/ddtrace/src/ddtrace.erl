@@ -55,51 +55,6 @@ start_link(Worker, Opts, GenOpts) ->
     gen_statem:start_link(?MODULE, {Worker, Opts}, GenOpts).
 
 %%%======================
-%%% Helper Functions
-%%%======================
-
-%% @doc Resolve a process name to a PID for Erlang monitoring
-resolve_to_pid(Pid) when is_pid(Pid) -> Pid;
-resolve_to_pid({global, Name}) ->
-    case global:whereis_name(Name) of
-        undefined -> exit({noproc, {global, Name}});
-        Pid -> Pid
-    end;
-resolve_to_pid({via, Mod, Name}) ->
-    case Mod:whereis_name(Name) of
-        undefined -> exit({noproc, {via, Mod, Name}});
-        Pid -> Pid
-    end;
-resolve_to_pid(Name) when is_atom(Name) ->
-    case whereis(Name) of
-        undefined -> exit({noproc, Name});
-        Pid -> Pid
-    end.
-
-%% @doc Normalize a worker identity - prefer global names over PIDs
-%% This is used to convert PIDs from trace events to their registered names
-normalize_worker(Worker, _Data) when is_pid(Worker) ->
-    %% Check if this PID has a corresponding global name in mon_reg
-    %% by looking through registered names
-    case find_registered_name(Worker) of
-        undefined -> Worker;  % No global name, use PID
-        Name -> Name          % Use global name
-    end;
-normalize_worker(Worker, _Data) ->
-    Worker.  % Already a name, keep it
-
-%% @doc Find a global name registered for a PID
-find_registered_name(Pid) ->
-    %% Scan global names to find one that resolves to this PID
-    Names = global:registered_names(),
-    case lists:filter(fun(Name) -> 
-        global:whereis_name(Name) =:= Pid 
-    end, Names) of
-        [Name | _] -> {global, Name};
-        [] -> undefined
-    end.
-
-%%%======================
 %%% gen_statem Callbacks
 %%%======================
 
@@ -116,15 +71,15 @@ init({Worker, Opts}) ->
     WorkerPid = resolve_to_pid(Worker),
     ErlMon = erlang:monitor(process, WorkerPid),
 
-    %% Register monitor under BOTH the original name and the PID
-    %% - Original name (global name): for application-level lookups
-    %% - PID: for trace-level lookups (trace events contain PIDs)
+    %% Register monitor under both the original name and the PID
+    %% - Original name: for application-level lookups
+    %% - PID: for trace-level lookups (trace events contain PIDs, not names)
     mon_reg:set_mon(Worker, self()),
     case Worker of
         WorkerPid -> ok;
         _ -> mon_reg:set_mon(WorkerPid, self())
     end,
-    
+
     %% Start detector and tracer
     {ok, MonState} = StateMod:start_link(Worker),
     {ok, Tracer} = TracerMod:start_link(Worker, WorkerPid),
@@ -203,7 +158,7 @@ handle_event({call, From}, stop_tracer, _State, Data) ->
         WorkerPid -> ok;
         _ -> mon_reg:unset_mon(WorkerPid)
     end,
-    
+
     Tracer = Data#data.tracer,
     gen_statem:call(Tracer, stop),
     {keep_state_and_data, {reply, From, ok}};
@@ -253,7 +208,7 @@ handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_From, _ProcMsgInfo), Dat
     send_herald(To, MsgInfo, Data),
     {keep_state, Data1};
 
-%% Awaiting herald: postpone (send events)
+%% Awaiting herald: postpone
 handle_event(cast, ?SEND_INFO(_To, _MsgInfo), _State, _Data) ->
     {keep_state_and_data, postpone};
 
@@ -306,9 +261,8 @@ handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
-%% Handle probe while awaiting monitor herald (since probes come from
-%% monitors). TODO: filter to make sure the probe comes from the right monitor
-%% only?
+%% Handle probe while awaiting monitor herald (since probes come from monitors).
+%% TODO: filter to make sure the probe comes from the right monitor only?
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_ReqId)), Data) ->
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
@@ -332,18 +286,18 @@ handle_event(_Kind, _Msg, _State, _Data) ->
 %%% Monitor user API
 %%%======================
 
-%% Stops tracing for the monitored process. This does not terminate the tracing
-%% process itself, just stops listening to subsequent events.
+%% @doc Stops tracing for the monitored process. This does not terminate the
+%% tracing process itself, just stops listening to subsequent events.
 stop_tracer(Mon) ->
     gen_statem:call(Mon, stop_tracer).
 
-%% Sends a gen_statem request which will be replied when a deadlock is detected.
-%% Useful for simultaneous waiting for either a response from the gen_server or a
-%% deadlock.
+%% @doc Sends a `gen_statem` request which will be replied when a deadlock is
+%% detected. Useful for simultaneous waiting for either a response from the
+%% gen_server or a deadlock.
 subscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, subscribe).
 
-%% Sends a gen_statem request to abandon a deadlock subscription. Once
+%% @doc Sends a gen_statem request to abandon a deadlock subscription. Once
 %% processed, the previous subscription will not be replied to.
 unsubscribe_deadlocks(Mon) ->
     gen_statem:send_request(Mon, unsubscribe).
@@ -352,7 +306,7 @@ unsubscribe_deadlocks(Mon) ->
 %%% Internal Helper Functions
 %%%======================
 
-%% Handle receive trace.
+%% @doc Handle receive trace.
 handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
     NormalizedFrom = normalize_worker(From, Data),
     state_wait(NormalizedFrom, ReqId, Data);
@@ -362,29 +316,35 @@ handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     state_unlock(Data).
 
-%% Handle send trace.
+%% @doc Handle send trace.
 handle_send(_To, ?QUERY_INFO(ReqId), Data) ->
     state_lock(ReqId, Data);
 handle_send(To, ?RESP_INFO(_ReqId), Data) ->
     NormalizedTo = normalize_worker(To, Data),
     state_unwait(NormalizedTo, Data).
 
+%% @doc Register a client
 state_wait(Who, ReqId, Data) ->
     call_mon_state({wait, Who, ReqId}, Data).
 
+%% @doc Unregister a client
 state_unwait(Who, Data) ->
     call_mon_state({unwait, Who}, Data).
 
+%% @doc Register unlocking
 state_unlock(Data) ->
     call_mon_state(unlock, Data).
     
+%% @doc Register locking
 state_lock(ReqId, Data) ->
     call_mon_state({lock, ReqId}, Data).
 
+%% @doc Register a deadlock
 state_deadlock(DL, Data) ->
     call_mon_state(?DEADLOCK_PROP(DL), Data).
 
-%% Send monitor herald to another monitor. The [To] should refer to the
+
+%% @doc Send monitor herald to another monitor. The [To] should refer to the
 %% worker process, not the monitor directly. If [To] is not monitored, the
 %% function does nothing.
 send_herald(To, MsgInfo, Data) ->
@@ -400,7 +360,8 @@ send_herald(To, MsgInfo, Data) ->
     end.
 
 
-%% Send a call message to the monitor state process and handle the response.
+%% @doc Send a call message to the monitor state process and handle the
+%% response.
 call_mon_state(Msg, Data = #data{mon_state = Pid}) ->
     Resp = gen_server:call(Pid, Msg),
     handle_mon_state_response(Resp, Data),
@@ -412,14 +373,15 @@ cast_mon_state(Msg, #data{mon_state = Pid}) ->
     gen_server:cast(Pid, Msg).
 
 
-%% Handle reponse of the monitoring algorithm. Execute all scheduled sends.
+%% @doc Handle reponse of the monitoring algorithm. Execute all scheduled sends.
 handle_mon_state_response(ok, _Data) ->
     ok;
 handle_mon_state_response({send, Sends}, _Data) ->
     [ gen_statem:cast(ToPid, Msg) || {ToPid, Msg} <- Sends ],
     ok.
 
-%% Make sure that all traces have been delivered before proceeding.
+
+%% @doc Make sure that all traces have been delivered before proceeding.
 deliver_traces(Data) ->
     WorkerPid = Data#data.worker_pid,
     spawn(fun() ->
@@ -428,12 +390,14 @@ deliver_traces(Data) ->
           end),
     ok.
 
-%% Inspect the monitor of a process.
+
+%% @doc Inspect the monitor of a process.
 mon_of(_Data, Pid) ->
     mon_reg:mon_of(Pid).
 
-%% Check if shutdown reason was caused by a (possibly remote) deadlock caused by
-%% a call to self.
+
+%% @doc Check if shutdown reason was caused by a (possibly remote) deadlock
+%% caused by a call to self.
 is_self_loop({calling_self, _}) ->
     true;
 is_self_loop({E, _}) ->
@@ -441,3 +405,46 @@ is_self_loop({E, _}) ->
 is_self_loop(_) ->
     false.
 
+ 
+%% @doc Resolve a process name to a PID for Erlang monitoring
+resolve_to_pid(Pid) when is_pid(Pid) -> Pid;
+resolve_to_pid({global, Name}) ->
+    case global:whereis_name(Name) of
+        undefined -> exit({noproc, {global, Name}});
+        Pid -> Pid
+    end;
+resolve_to_pid({via, Mod, Name}) ->
+    case Mod:whereis_name(Name) of
+        undefined -> exit({noproc, {via, Mod, Name}});
+        Pid -> Pid
+    end;
+resolve_to_pid(Name) when is_atom(Name) ->
+    case whereis(Name) of
+        undefined -> exit({noproc, Name});
+        Pid -> Pid
+    end.
+
+
+%% @doc Normalize a worker identity - prefer global names over PIDs This is used
+%% to convert PIDs from trace events to their registered names
+normalize_worker(Worker, _Data) when is_pid(Worker) ->
+    %% Check if this PID has a corresponding global name in mon_reg
+    %% by looking through registered names
+    case find_registered_name(Worker) of
+        undefined -> Worker;  % No global name, use PID
+        Name -> Name          % Use global name
+    end;
+normalize_worker(Worker, _Data) ->
+    Worker.  % Already a name, keep it
+
+
+%% @doc Find a global name registered for a PID
+find_registered_name(Pid) ->
+    %% Scan global names to find one that resolves to this PID
+    Names = global:registered_names(),
+    case lists:filter(fun(Name) -> 
+        global:whereis_name(Name) =:= Pid 
+    end, Names) of
+        [Name | _] -> {global, Name};
+        [] -> undefined
+    end.

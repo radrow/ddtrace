@@ -1,11 +1,11 @@
 %%%-------------------------------------------------------------------
 %%% @doc Monitor registry using pg process groups.
 %%%
-%%% Maps worker identities (PIDs or global names) to their monitor
-%%% processes. Uses a custom pg scope for distributed lookups.
-%%% pg:join/leave require the joined process to be node-local.
-%%% pg handles automatic cleanup when a member process dies.
-%%%-------------------------------------------------------------------
+%%% Maps worker identities (PIDs or global names) to their monitor processes.
+%%% Uses a custom pg scope for distributed lookups. pg:join/leave require the
+%%% joined process to be node-local. pg handles automatic cleanup when a member
+%%% process dies.
+%%% -------------------------------------------------------------------
 -module(mon_reg).
 
 -export([ensure_started/0, mon_of/1, set_mon/2, unset_mon/1]).

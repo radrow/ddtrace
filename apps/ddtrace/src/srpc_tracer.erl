@@ -128,7 +128,7 @@ handle_event(info,
     #{requests := Requests} = Data,
     Data1 = Data#{requests => Requests#{ReqId => From}},
     
-    case mon_of(Data, From) of
+    case mon_reg:mon_of(From) of
         undefined ->
             %% If the sender is not being monitored, we fake monitor herald
             FakeNotif = ?HERALD(From, ?QUERY_INFO(ReqId)),
@@ -206,10 +206,6 @@ handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, unlocked, Data};
 
-%% Receive response (non-matching or wrong state) - postpone
-handle_event(internal, ?RECV_INFO(?RESP_INFO(_ReqId)), _State, _Data) ->
-    {keep_state_and_data, postpone};
-
 %%%======================
 %%% handle_event: Control
 %%%======================
@@ -230,9 +226,6 @@ handle_event(_Kind, _Ev, _State, _Data) ->
 %%%======================
 %%% Internal functions
 %%%======================
-
-mon_of(_Data, To) ->
-    mon_reg:mon_of(To).
 
 stop_tracing(Data) ->
     #{worker := Worker} = Data,
