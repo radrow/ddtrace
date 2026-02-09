@@ -117,14 +117,14 @@ terminate(Reason, _State, Data) ->
 
 %% Wait for the tracer to deliver all traces to quit non-synced state asap..
 handle_event(enter, _OldState, ?synced, _Data) ->
-    ?DDT_DBG("[~p@~p] ~p -> synced", [_Data#data.worker, node(), _OldState]),
+    ?DDT_DBG_STATE("[~p@~p] ~p -> synced", [_Data#data.worker, node(), _OldState]),
     keep_state_and_data;
 handle_event(enter, _OldState, ?wait_mon(_MsgInfo), _Data) ->
-    ?DDT_DBG("[~p@~p] ~p -> wait_mon(~p)", [_Data#data.worker, node(), _OldState, _MsgInfo]),
+    ?DDT_DBG_STATE("[~p@~p] ~p -> wait_mon(~p)", [_Data#data.worker, node(), _OldState, _MsgInfo]),
     TimeoutAction = {state_timeout, 1000, synchronisation},
     {keep_state_and_data, [TimeoutAction]};
 handle_event(enter, _OldState, _NewState, Data) ->
-    ?DDT_DBG("[~p@~p] ~p -> ~p", [Data#data.worker, node(), _OldState, _NewState]),
+    ?DDT_DBG_STATE("[~p@~p] ~p -> ~p", [Data#data.worker, node(), _OldState, _NewState]),
     deliver_traces(Data),
     keep_state_and_data;
 
@@ -196,14 +196,14 @@ handle_event(cast, ?DEADLOCK_PROP(DL), _State, Data) ->
 
 %% Handle send trace in synced state
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?synced, Data) ->
-    ?DDT_DBG("[~p@~p] SEND synced: To=~p MsgInfo=~p", [Data#data.worker, node(), To, MsgInfo]),
+    ?DDT_DBG_STATE("[~p@~p] SEND synced: To=~p MsgInfo=~p", [Data#data.worker, node(), To, MsgInfo]),
     Data1 = handle_send(To, MsgInfo, Data),
     send_herald(To, MsgInfo, Data),
     {keep_state, Data1};
 
 %% Handle send trace while awaiting process trace
 handle_event(cast, ?SEND_INFO(To, MsgInfo), ?wait_proc(_From, _ProcMsgInfo), Data) ->
-    ?DDT_DBG("[~p@~p] SEND wait_proc: To=~p MsgInfo=~p", [Data#data.worker, node(), To, MsgInfo]),
+    ?DDT_DBG_STATE("[~p@~p] SEND wait_proc: To=~p MsgInfo=~p", [Data#data.worker, node(), To, MsgInfo]),
     Data1 = handle_send(To, MsgInfo, Data),
     send_herald(To, MsgInfo, Data),
     {keep_state, Data1};
@@ -217,10 +217,12 @@ handle_event(cast, ?SEND_INFO(_To, _MsgInfo), _State, _Data) ->
 
 %% We were synced, so now we wait for monitor herald
 handle_event(cast, ?RECV_INFO(MsgInfo), ?synced, _Data) ->
+    ?DDT_DBG_LOCK("~p: Waiting for lock (herald) for ~p (synced -> wait_mon)", [_Data#data.worker, MsgInfo]),
     {next_state, ?wait_mon(MsgInfo), _Data};
 
 %% Awaited process receive-trace
 handle_event(cast, ?RECV_INFO(MsgInfo), ?wait_proc(From, MsgInfo), Data0) ->
+    ?DDT_DBG_LOCK("~p: Lock acquired - process received message ~p from ~p (wait_proc -> synced)", [Data0#data.worker, MsgInfo, From]),
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?synced, Data1};
 
@@ -238,10 +240,12 @@ handle_event(cast, ?RECV_INFO(_MsgInfo), _State, _Data) ->
     
 %% We were synced, so now we wait for process trace
 handle_event(cast, ?HERALD(From, MsgInfo), ?synced, _Data) ->
+    ?DDT_DBG_HERALD("~p: Herald from ~p for ~p (synced -> wait_proc)", [_Data#data.worker, From, MsgInfo]),
     {next_state, ?wait_proc(From, MsgInfo), _Data};
 
 %% Awaited herald
 handle_event(cast, ?HERALD(From, MsgInfo), ?wait_mon(MsgInfo), Data0) ->
+    ?DDT_DBG_HERALD("~p: Awaited herald from ~p for ~p (wait_mon -> synced)", [Data0#data.worker, From, MsgInfo]),
     Data1 = handle_recv(From, MsgInfo, Data0),
     {next_state, ?synced, Data1};
 
@@ -258,25 +262,25 @@ handle_event(cast, ?HERALD(_From, _MsgInfoOther), _State, _Data) ->
 
 %% Handle probe in synced state
 handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
-    ?DDT_DBG("~p: Received probe ~p with path ~p in synced state", [Data#data.worker, Probe, L]),
+    ?DDT_DBG_PROBE("~p: Received probe ~p with path ~p in synced state", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 %% Handle probe while awaiting monitor herald (since probes come from monitors).
 %% TODO: filter to make sure the probe comes from the right monitor only?
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_ReqId)), Data) ->
-    ?DDT_DBG("~p: Received probe ~p with path ~p while awaiting monitor", [Data#data.worker, Probe, L]),
+    ?DDT_DBG_PROBE("~p: Received probe ~p with path ~p while awaiting monitor", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon_proc(?RESP_INFO(_ReqId), _FromProc, _MsgInfoProc), Data) ->
-    ?DDT_DBG("~p: Received probe ~p with path ~p while awaiting monitor proc", [Data#data.worker, Probe, L]),
+    ?DDT_DBG_PROBE("~p: Received probe ~p with path ~p while awaiting monitor proc", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 %% Unwanted probe: postpone
-handle_event(cast, ?PROBE(Probe, L), State, Data) ->
-    ?DDT_DBG("~p: Postponing probe ~p with path ~p in state ~p", [Data#data.worker, Probe, L, State]),
+handle_event(cast, ?PROBE(_Probe, _L), _State, _Data) ->
+    ?DDT_DBG_STATE("~p: Postponing probe ~p with path ~p in state ~p", [_Data#data.worker, _Probe, _L, _State]),
     {keep_state_and_data, postpone};
 
 %%%======================

@@ -73,7 +73,7 @@ handle_call({wait, Who, ReqId}, _From, State = #state{probe = Probe}) ->
                undefined -> ok;
                MonPid when is_pid(MonPid) ->
                    Worker = State#state.worker,
-                   ?DDT_DBG("~p: Sending probe ~p to ~p with path [~p]", [Worker, Probe, MonPid, Worker]),
+                   ?DDT_DBG_PROBE("~p: Sending probe ~p to ~p with path [~p]", [Worker, Probe, MonPid, Worker]),
                    {send, [{MonPid, ?PROBE(Probe, [Worker])}]}
            end,
     {reply, Resp, State1};
@@ -116,7 +116,7 @@ handle_call(?PROBE(_Probe, _L), _From, State = #state{probe = undefined}) ->
 %% Own probe returned --- deadlock
 handle_call(?PROBE(Probe, DL), _From, State = #state{probe = Probe}) ->
     Worker = State#state.worker,
-    ?DDT_DBG("~p: Own probe ~p returned! Deadlock detected with path: ~p", [Worker, Probe, [Worker|DL]]),
+    ?DDT_DBG_DEADLOCK("~p: Own probe ~p returned! Deadlock detected with path: ~p", [Worker, Probe, [Worker|DL]]),
     {DlProp, State1} = report_deadlock([Worker|DL], State),
     {reply, {send, DlProp}, State1};
 
@@ -126,7 +126,7 @@ handle_call(?PROBE(Probe, L), _From, State) ->
     Waits = State#state.waitees,
     Mons = [ mon_reg:mon_of(Who) || Who <- Waits ],
     Sends = [ {Mon, ?PROBE(Probe, [Worker|L])} || Mon <- Mons ],
-    ?DDT_DBG("~p: Propagating foreign probe ~p (path: ~p) to ~p monitors", [Worker, Probe, [Worker|L], length(Sends)]),
+    ?DDT_DBG_PROBE("~p: Propagating foreign probe ~p (path: ~p) to ~p monitors", [Worker, Probe, [Worker|L], length(Sends)]),
     Resp = case Sends of [] -> ok; _ -> {send, Sends} end,
     {reply, Resp, State};
 
