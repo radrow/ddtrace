@@ -9,7 +9,7 @@ defmodule ElephantPatrol.Drone do
   require Logger
 
   # Cyan color for drones
-  @color "#{IO.ANSI.cyan()}#{IO.ANSI.bright()}"
+  @color "#{IO.ANSI.blue()}#{IO.ANSI.bright()}"
   @reset IO.ANSI.reset()
 
   defstruct [:name, :elephant, :controller]
@@ -72,6 +72,7 @@ defmodule ElephantPatrol.Drone do
 
   @impl true
   def handle_call(:confirm_sighting, _from, state) do
+    Process.sleep(2000)
     Logger.info("#{@color}[#{state.name}] 🔎 Received elephant confirmation request...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
@@ -109,7 +110,7 @@ defmodule ElephantPatrol.Drone do
 
             Process.sleep(1000)
 
-            Logger.info("#{@color}[#{state.name}] 📣 AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
+            Logger.info("#{@color}[#{state.name}] 📣 AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!! #{@reset}")
             ElephantPatrol.Elephant.scare(state.elephant)
             {:ok, :scared_off}
 

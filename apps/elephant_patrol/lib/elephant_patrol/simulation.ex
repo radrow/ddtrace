@@ -76,7 +76,6 @@ defmodule ElephantPatrol.Simulation do
   def start_elephant(_opts \\ []) do
     {:ok, _pid} = ElephantPatrol.Elephant.start_link(name: @elephant)
     :global.sync()
-    Logger.info("🐘 Elephant ready")
     :ok
   end
 
@@ -99,7 +98,14 @@ defmodule ElephantPatrol.Simulation do
     )
 
     :global.sync()
-    Logger.info("🚁 Alpha patrol ready (drone_alpha + controller_alpha)")
+    Logger.info("""
+
+    ╔═══════════════════════════════════════════════════════╗
+    ║ 🚁 Alpha patrol ready                                 ║
+    ║    - Drone::alpha                                     ║
+    ║    - Controller::alpha                                ║
+    ╚═══════════════════════════════════════════════════════╝
+    """)
     :ok
   end
 
@@ -122,7 +128,14 @@ defmodule ElephantPatrol.Simulation do
     )
 
     :global.sync()
-    Logger.info("🚁 Bravo patrol ready (drone_bravo + controller_bravo)")
+    Logger.info("""
+
+    ╔═══════════════════════════════════════════════════════╗
+    ║ 🚁 Bravo patrol ready                                 ║
+    ║    - Drone::bravo                                     ║
+    ║    - Controller::bravo                                ║
+    ╚═══════════════════════════════════════════════════════╝
+    """)
     :ok
   end
 
@@ -180,17 +193,30 @@ defmodule ElephantPatrol.Simulation do
   """
   def trigger_elephant(opts \\ []) do
     monitored = Keyword.get(opts, :monitored, false)
-    n_calls = Keyword.get(opts, :calls, 1)
+    n_alarms = Keyword.get(opts, :alarms, 1)
+
+    # Start elephant if not running
+    ensure_elephant_started()
 
     case wait_for_processes(5_000) do
-      :ok -> do_trigger_elephant(monitored, n_calls)
+      :ok -> do_trigger_elephant(monitored, n_alarms)
       {:error, :timeout, missing} ->
         Logger.error("Cannot trigger elephant. Missing processes: #{inspect(missing)}")
         {:error, :missing_processes}
     end
   end
 
-  defp do_trigger_elephant(monitored, n_calls) do
+  defp ensure_elephant_started do
+    case :global.whereis_name(:elephant) do
+      :undefined ->
+        Logger.info("🐘 Starting elephant...")
+        start_elephant()
+      _pid ->
+        :ok
+    end
+  end
+
+  defp do_trigger_elephant(monitored, n_alarms) do
     Process.sleep(500)
 
     ElephantPatrol.Elephant.destroy_crops(@elephant)
@@ -205,19 +231,17 @@ defmodule ElephantPatrol.Simulation do
     # Setup monitors (like microchip_factory does)
     ctx = setup_monitors(monitored, global_names)
 
-    # Prepare calls to both drones
-    calls = case n_calls do
+    # Prepare alarms to both drones
+    alarms = case n_alarms do
               1 -> [@drone_alpha]
               2 -> [@drone_alpha, @drone_bravo]
               _ ->
-                Logger.error("Invalid number of calls. Defaulting to 1")
+                Logger.error("Invalid number of alarms. Defaulting to 1")
                 [@drone_alpha]
             end
 
-    # Execute the calls
-    result = do_calls(calls, timeout: 20_000, monitor_ctx: ctx)
-
-    print_result(result)
+    # Execute the alarms
+    result = do_calls(alarms, timeout: 20_000, monitor_ctx: ctx)
 
     # Clean up monitors BEFORE restarting workers, so ddtrace doesn't
     # see DOWN messages from the workers being terminated.
@@ -228,7 +252,15 @@ defmodule ElephantPatrol.Simulation do
       recover_from_deadlock()
     end
 
-    result
+    # Shutdown the elephant after simulation completes (unless it was a timeout)
+    unless result == :timeout do
+      :gen_statem.stop(@elephant)
+    end
+
+    # Display final result in a nice box
+    print_result(result)
+
+    :ok
   end
 
   defp collect_all_global_names do
@@ -249,7 +281,7 @@ defmodule ElephantPatrol.Simulation do
   defp setup_monitors(false, _global_names), do: nil
 
   defp setup_monitors(true, global_names) do
-    Logger.info("🔍 Attaching deadlock monitors...")
+    Logger.info("🖥️ Attaching deadlock monitors...")
 
     # Ensure pg scope is running on all connected nodes
     :mon_reg.ensure_started()
@@ -304,18 +336,18 @@ defmodule ElephantPatrol.Simulation do
 
   defp create_remote_monitors(target_node, global_names, acc) do
     caller = self()
-    
+
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
       # Spawn on the remote node and explicitly set group_leader
       Node.spawn(target_node, fn ->
         # Set group_leader to the remote node's user process
         # This ensures all logs appear on the remote node's terminal
         :erlang.group_leader(:erlang.whereis(:user), self())
-        
+
         result = :ddtrace.start(global_name, [])
         send(caller, {:monitor_result, global_name, result})
       end)
-      
+
       # Wait for response
       receive do
         {:monitor_result, ^global_name, {:ok, monitor}} ->
@@ -491,17 +523,25 @@ defmodule ElephantPatrol.Simulation do
   defp print_result(result) do
     case result do
       {:deadlock, dl} ->
+        cycle_lines =
+          dl
+          |> Enum.map(&find_process_name/1)
+          |> Enum.with_index()
+          |> Enum.map(fn {name, idx} ->
+            arrow = if idx < length(dl) - 1, do: " =>", else: ""
+            "║     #{String.pad_trailing(name <> arrow, 54)} ║"
+          end)
+          |> Enum.join("\n")
+
         Logger.error("""
 
         ╔════════════════════════════════════════════════════════════╗
         ║   💀 DEADLOCK DETECTED!                                    ║
+        ║                                                            ║
+        ║   Cycle:                                                   ║
+        #{cycle_lines}
         ╚════════════════════════════════════════════════════════════╝
         """)
-        cycle =
-          dl
-          |> Enum.map(&find_process_name/1)
-          |> Enum.join(" → ")
-        Logger.error("   Cycle: #{cycle}")
 
       {:success, _replies} ->
         Logger.info("""

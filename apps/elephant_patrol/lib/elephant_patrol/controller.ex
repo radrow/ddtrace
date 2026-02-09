@@ -57,23 +57,24 @@ defmodule ElephantPatrol.Controller do
   def handle_call(:request_scare, _from, state) do
     Process.sleep(1000)
     Logger.info("#{@color}[#{state.name}] Scare request received from #{format_ref(state.drone)}#{@reset}")
+    Process.sleep(1000)
     Logger.info("#{@color}[#{state.name}] Asking #{format_ref(state.confirming_drone)} to confirm...#{@reset}")
 
     # Small delay to ensure both controllers receive requests before either tries to confirm
-    Process.sleep(3000)
+    Process.sleep(2000)
 
     result =
       case ElephantPatrol.Drone.confirm_sighting(state.confirming_drone) do
         true ->
-          Process.sleep(1000)
-          Logger.info("#{@color}[#{state.name}] ✅ Confirmed, sending approval#{@reset}")
           Process.sleep(2000)
+          Logger.info("#{@color}[#{state.name}] ✅ Confirmed, sending approval#{@reset}")
+          Process.sleep(1000)
           :approved
 
         false ->
-          Process.sleep(1000)
-          Logger.warning("#{@color}[#{state.name}] ❌ Not confirmed, sending rejection#{@reset}")
           Process.sleep(2000)
+          Logger.warning("#{@color}[#{state.name}] ❌ Not confirmed, sending rejection#{@reset}")
+          Process.sleep(1000)
           :rejected
       end
 
