@@ -303,16 +303,30 @@ defmodule ElephantPatrol.Simulation do
    end
 
   defp create_remote_monitors(target_node, global_names, acc) do
+    caller = self()
+    
     Enum.reduce(global_names, acc, fn global_name, inner_acc ->
-      case :rpc.call(target_node, :ddtrace, :start, [global_name, []]) do
-        {:ok, monitor} ->
+      # Spawn on the remote node and explicitly set group_leader
+      Node.spawn(target_node, fn ->
+        # Set group_leader to the remote node's user process
+        # This ensures all logs appear on the remote node's terminal
+        :erlang.group_leader(:erlang.whereis(:user), self())
+        
+        result = :ddtrace.start(global_name, [])
+        send(caller, {:monitor_result, global_name, result})
+      end)
+      
+      # Wait for response
+      receive do
+        {:monitor_result, ^global_name, {:ok, monitor}} ->
           Logger.debug("Monitor attached to #{inspect(global_name)} on #{target_node}")
           Map.put(inner_acc, global_name, monitor)
-        {:error, reason} ->
+        {:monitor_result, ^global_name, {:error, reason}} ->
           Logger.error("✗ Failed to monitor #{inspect(global_name)}: #{inspect(reason)}")
           inner_acc
-        {:badrpc, reason} ->
-          Logger.error("✗ RPC failed for #{inspect(global_name)}: #{inspect(reason)}")
+      after
+        5000 ->
+          Logger.error("✗ Timeout starting monitor for #{inspect(global_name)}")
           inner_acc
       end
     end)

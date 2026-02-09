@@ -3,7 +3,7 @@
 %% Debug logging macro. Set DDT_DEBUG to true to enable verbose debug output.
 %% Usage: ?DDT_DEBUG("format string ~p", [Args]).
 -ifndef(DDT_DEBUG).
--define(DDT_DEBUG, false).
+-define(DDT_DEBUG, true).
 -endif.
 
 -if(?DDT_DEBUG).

@@ -258,21 +258,25 @@ handle_event(cast, ?HERALD(_From, _MsgInfoOther), _State, _Data) ->
 
 %% Handle probe in synced state
 handle_event(cast, ?PROBE(Probe, L), ?synced, Data) ->
+    ?DDT_DBG("~p: Received probe ~p with path ~p in synced state", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 %% Handle probe while awaiting monitor herald (since probes come from monitors).
 %% TODO: filter to make sure the probe comes from the right monitor only?
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon(?RESP_INFO(_ReqId)), Data) ->
+    ?DDT_DBG("~p: Received probe ~p with path ~p while awaiting monitor", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 handle_event(cast, ?PROBE(Probe, L), ?wait_mon_proc(?RESP_INFO(_ReqId), _FromProc, _MsgInfoProc), Data) ->
+    ?DDT_DBG("~p: Received probe ~p with path ~p while awaiting monitor proc", [Data#data.worker, Probe, L]),
     call_mon_state(?PROBE(Probe, L), Data),
     keep_state_and_data;
 
 %% Unwanted probe: postpone
-handle_event(cast, ?PROBE(_Probe, _L), _State, _Data) ->
+handle_event(cast, ?PROBE(Probe, L), State, Data) ->
+    ?DDT_DBG("~p: Postponing probe ~p with path ~p in state ~p", [Data#data.worker, Probe, L, State]),
     {keep_state_and_data, postpone};
 
 %%%======================
