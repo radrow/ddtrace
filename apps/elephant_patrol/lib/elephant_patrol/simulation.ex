@@ -510,9 +510,9 @@ defmodule ElephantPatrol.Simulation do
   defp find_process_name(pid_or_name) do
     # Handle both PIDs and global name tuples
     case pid_or_name do
-      {:global, {type, patrol}} when is_atom(type) and is_atom(patrol) -> 
+      {:global, {type, patrol}} when is_atom(type) and is_atom(patrol) ->
         "#{type}_#{patrol}"
-      {:global, name} when is_atom(name) -> 
+      {:global, name} when is_atom(name) ->
         Atom.to_string(name)
       pid when is_pid(pid) ->
         cond do

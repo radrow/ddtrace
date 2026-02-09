@@ -75,6 +75,9 @@ defmodule ElephantPatrol.Drone do
     Logger.info("#{@color}[#{state.name}] 🔎 Received elephant confirmation request...#{@reset}")
     elephant_state = ElephantPatrol.Elephant.get_state(state.elephant)
     is_destroying = elephant_state == :destroying_crops
+
+    Process.sleep(2000)
+
     Logger.info("#{@color}[#{state.name}] 🔎 Confirmation verdict: #{is_destroying}#{@reset}")
     {:reply, is_destroying, state}
   end
@@ -82,27 +85,45 @@ defmodule ElephantPatrol.Drone do
   # Private Functions
 
   defp do_observe(state) do
+    Process.sleep(2000)
+
     case ElephantPatrol.Elephant.get_state(state.elephant) do
       :calm ->
         Logger.info("#{@color}[#{state.name}] ✅ Elephant is calm#{@reset}")
         {:ok, :calm}
 
       :destroying_crops ->
-        Logger.info("#{@color}[#{state.name}] ⚠️ ️Elephant destroying crops! Requesting scare permission...#{@reset}")
+        Logger.info("#{@color}[#{state.name}] 🚨 Elephant destroying crops! #{@reset}")
+        Process.sleep(500)
+        Logger.info("#{@color}[#{state.name}] Requesting scare permission from #{format_ref(state.controller)}#{@reset}")
 
         case ElephantPatrol.Controller.request_scare(state.controller) do
           :approved ->
-            ElephantPatrol.Elephant.scare(state.elephant)
+            Process.sleep(2000)
+
             Logger.info("#{@color}[#{state.name}] ✅ Affirmative.")
-            Logger.info("#{@color}[#{state.name}] Scaring off the elephant: 📣 AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
+
+            Process.sleep(1000)
+
+            Logger.info("#{@color}[#{state.name}] Scaring off the elephant #{@reset}")
+
+            Process.sleep(1000)
+
+            Logger.info("#{@color}[#{state.name}] 📣 AAAaaAAAaAAAaaAAAaaAaaaaaAAAA!!!! #{@reset}")
+            ElephantPatrol.Elephant.scare(state.elephant)
             {:ok, :scared_off}
 
           :rejected ->
+            Process.sleep(2000)
             Logger.warning("#{@color}[#{state.name}] ❌ Permission rejected, standing down#{@reset}")
             {:ok, :not_approved}
         end
     end
   end
+
+  defp format_ref({:global, {:controller, patrol}}) when is_atom(patrol), do: "Controller::#{patrol}"
+  defp format_ref({:global, name}), do: Atom.to_string(name)
+  defp format_ref(other), do: inspect(other)
 
   defp format_name({:global, {:drone, patrol}}) when is_atom(patrol), do: "Drone::#{patrol}"
   defp format_name(name) when is_atom(name), do: "Drone:#{name}"

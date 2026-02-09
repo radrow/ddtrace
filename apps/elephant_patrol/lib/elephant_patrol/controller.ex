@@ -55,21 +55,25 @@ defmodule ElephantPatrol.Controller do
 
   @impl true
   def handle_call(:request_scare, _from, state) do
-    Logger.info(
-      "#{@color}[#{state.name}] 📋 Scare request received, asking #{format_ref(state.confirming_drone)} to confirm...#{@reset}"
-    )
+    Process.sleep(1000)
+    Logger.info("#{@color}[#{state.name}] Scare request received from #{format_ref(state.drone)}#{@reset}")
+    Logger.info("#{@color}[#{state.name}] Asking #{format_ref(state.confirming_drone)} to confirm...#{@reset}")
 
     # Small delay to ensure both controllers receive requests before either tries to confirm
-    Process.sleep(500)
+    Process.sleep(3000)
 
     result =
       case ElephantPatrol.Drone.confirm_sighting(state.confirming_drone) do
         true ->
-          Logger.info("#{@color}[#{state.name}] ✅ Confirmed → approved#{@reset}")
+          Process.sleep(1000)
+          Logger.info("#{@color}[#{state.name}] ✅ Confirmed, sending approval#{@reset}")
+          Process.sleep(2000)
           :approved
 
         false ->
-          Logger.warning("#{@color}[#{state.name}] ❌ Not confirmed → rejected#{@reset}")
+          Process.sleep(1000)
+          Logger.warning("#{@color}[#{state.name}] ❌ Not confirmed, sending rejection#{@reset}")
+          Process.sleep(2000)
           :rejected
       end
 
@@ -78,7 +82,7 @@ defmodule ElephantPatrol.Controller do
 
   # Private Functions
 
-  defp format_ref({:global, {:drone, patrol}}) when is_atom(patrol), do: "drone::#{patrol}"
+  defp format_ref({:global, {:drone, patrol}}) when is_atom(patrol), do: "Drone::#{patrol}"
   defp format_ref({:global, name}), do: Atom.to_string(name)
   defp format_ref(other), do: inspect(other)
 
