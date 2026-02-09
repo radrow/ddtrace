@@ -4,11 +4,11 @@ defmodule ElephantPatrol.Simulation do
 
   Topology:
   - field@localhost: Elephant (the shared elephant)
-  - patrol1@localhost: Drone1 + Controller1
-  - patrol2@localhost: Drone2 + Controller2
+  - alpha@localhost: DroneAlpha + ControllerAlpha
+  - bravo@localhost: DroneBravo + ControllerBravo
 
-  Controller1 uses Drone2 for confirmation (cross-node)
-  Controller2 uses Drone1 for confirmation (cross-node)
+  ControllerAlpha uses DroneBravo for confirmation (cross-node)
+  ControllerBravo uses DroneAlpha for confirmation (cross-node)
 
   ## Usage
 
@@ -17,11 +17,11 @@ defmodule ElephantPatrol.Simulation do
       # Terminal 1 - Field node
       ./apps/elephant_patrol/scripts/start_field.sh
 
-      # Terminal 2 - Patrol1 node
-      ./apps/elephant_patrol/scripts/start_patrol1.sh
+      # Terminal 2 - Alpha patrol node
+      ./apps/elephant_patrol/scripts/start_patrol.sh alpha
 
-      # Terminal 3 - Patrol2 node
-      ./apps/elephant_patrol/scripts/start_patrol2.sh
+      # Terminal 3 - Bravo patrol node
+      ./apps/elephant_patrol/scripts/start_patrol.sh bravo
 
       # On field node, run:
       ElephantPatrol.trigger_elephant()           # Without monitoring
@@ -30,17 +30,17 @@ defmodule ElephantPatrol.Simulation do
   require Logger
 
   @field_node :"field@127.0.0.1"
-  @patrol1_node :"patrol1@127.0.0.1"
-  @patrol2_node :"patrol2@127.0.0.1"
+  @alpha_node :"alpha@127.0.0.1"
+  @bravo_node :"bravo@127.0.0.1"
 
   @elephant {:global, :elephant}
-  @drone1 {:global, :drone1}
-  @drone2 {:global, :drone2}
-  @controller1 {:global, :controller1}
-  @controller2 {:global, :controller2}
+  @drone_alpha {:global, {:drone, :alpha}}
+  @drone_bravo {:global, {:drone, :bravo}}
+  @controller_alpha {:global, {:controller, :alpha}}
+  @controller_bravo {:global, {:controller, :bravo}}
 
-  @patrol1_sup :patrol1_sup
-  @patrol2_sup :patrol2_sup
+  @alpha_sup :alpha_sup
+  @bravo_sup :bravo_sup
 
   # ============================================================================
   # Node Setup Functions
@@ -53,7 +53,7 @@ defmodule ElephantPatrol.Simulation do
   def connect_nodes do
     Logger.info("🌐 Connecting to cluster nodes...")
 
-    nodes = [@field_node, @patrol1_node, @patrol2_node]
+    nodes = [@field_node, @alpha_node, @bravo_node]
     current = Node.self()
 
     for node <- nodes, node != current do
@@ -81,48 +81,48 @@ defmodule ElephantPatrol.Simulation do
   end
 
   @doc """
-  Starts drone1 and controller1 on patrol1 node.
+  Starts drone_alpha and controller_alpha on alpha node.
   """
-  def start_patrol1(_opts \\ []) do
+  def start_alpha(_opts \\ []) do
     {:ok, _} = ElephantPatrol.PatrolSupervisor.start(
-      name: @patrol1_sup,
+      name: @alpha_sup,
       drone: [
-        name: @drone1,
+        name: @drone_alpha,
         elephant: @elephant,
-        controller: @controller1
+        controller: @controller_alpha
       ],
       controller: [
-        name: @controller1,
-        drone: @drone1,
-        confirming_drone: @drone2
+        name: @controller_alpha,
+        drone: @drone_alpha,
+        confirming_drone: @drone_bravo
       ]
     )
 
     :global.sync()
-    Logger.info("🚁 Patrol 1 ready (drone1 + controller1)")
+    Logger.info("🚁 Alpha patrol ready (drone_alpha + controller_alpha)")
     :ok
   end
 
   @doc """
-  Starts drone2 and controller2 on patrol2 node.
+  Starts drone_bravo and controller_bravo on bravo node.
   """
-  def start_patrol2(_opts \\ []) do
+  def start_bravo(_opts \\ []) do
     {:ok, _} = ElephantPatrol.PatrolSupervisor.start(
-      name: @patrol2_sup,
+      name: @bravo_sup,
       drone: [
-        name: @drone2,
+        name: @drone_bravo,
         elephant: @elephant,
-        controller: @controller2
+        controller: @controller_bravo
       ],
       controller: [
-        name: @controller2,
-        drone: @drone2,
-        confirming_drone: @drone1
+        name: @controller_bravo,
+        drone: @drone_bravo,
+        confirming_drone: @drone_alpha
       ]
     )
 
     :global.sync()
-    Logger.info("🚁 Patrol 2 ready (drone2 + controller2)")
+    Logger.info("🚁 Bravo patrol ready (drone_bravo + controller_bravo)")
     :ok
   end
 
@@ -139,7 +139,7 @@ defmodule ElephantPatrol.Simulation do
   Waits for all required processes to be registered globally.
   """
   def wait_for_processes(timeout \\ 10_000) do
-    required = [:elephant, :drone1, :drone2, :controller1, :controller2]
+    required = [:elephant, {:drone, :alpha}, {:drone, :bravo}, {:controller, :alpha}, {:controller, :bravo}]
     deadline = System.monotonic_time(:millisecond) + timeout
     wait_loop(required, deadline)
   end
@@ -207,11 +207,11 @@ defmodule ElephantPatrol.Simulation do
 
     # Prepare calls to both drones
     calls = case n_calls do
-              1 -> [@drone1]
-              2 -> [@drone1, @drone2]
+              1 -> [@drone_alpha]
+              2 -> [@drone_alpha, @drone_bravo]
               _ ->
                 Logger.error("Invalid number of calls. Defaulting to 1")
-                [@drone1]
+                [@drone_alpha]
             end
 
     # Execute the calls
@@ -234,11 +234,11 @@ defmodule ElephantPatrol.Simulation do
   defp collect_all_global_names do
     # Return global names instead of PIDs
     %{
-      elephant: @elephant,
-      drone1: @drone1,
-      drone2: @drone2,
-      controller1: @controller1,
-      controller2: @controller2
+      {:drone, :alpha} => @drone_alpha,
+      {:drone, :bravo} => @drone_bravo,
+      {:controller, :alpha} => @controller_alpha,
+      {:controller, :bravo} => @controller_bravo,
+      elephant: @elephant
     }
   end
 
@@ -336,7 +336,7 @@ defmodule ElephantPatrol.Simulation do
 
     # Restart both patrol supervisors via restart_children.
     # Each supervisor uses a local name on its respective node.
-    for {node, sup} <- [{@patrol1_node, @patrol1_sup}, {@patrol2_node, @patrol2_sup}] do
+    for {node, sup} <- [{@alpha_node, @alpha_sup}, {@bravo_node, @bravo_sup}] do
       try do
         if node == node() do
           ElephantPatrol.PatrolSupervisor.restart_children(sup)
@@ -395,7 +395,7 @@ defmodule ElephantPatrol.Simulation do
 
   defp prepare_request(drone, %{monitors: monitors}) do
     # With monitoring - also subscribe to deadlocks
-    # drone is already a global name like {:global, :drone1}
+    # drone is already a global name like {:global, :drone_alpha}
     monitor = Map.fetch!(monitors, drone)
 
     call_req = :gen_server.send_request(drone, :observe)
@@ -510,14 +510,17 @@ defmodule ElephantPatrol.Simulation do
   defp find_process_name(pid_or_name) do
     # Handle both PIDs and global name tuples
     case pid_or_name do
-      {:global, name} -> Atom.to_string(name)
+      {:global, {type, patrol}} when is_atom(type) and is_atom(patrol) -> 
+        "#{type}_#{patrol}"
+      {:global, name} when is_atom(name) -> 
+        Atom.to_string(name)
       pid when is_pid(pid) ->
         cond do
           pid == GenServer.whereis(@elephant) -> "elephant"
-          pid == GenServer.whereis(@drone1) -> "drone1"
-          pid == GenServer.whereis(@drone2) -> "drone2"
-          pid == GenServer.whereis(@controller1) -> "controller1"
-          pid == GenServer.whereis(@controller2) -> "controller2"
+          pid == GenServer.whereis(@drone_alpha) -> "drone_alpha"
+          pid == GenServer.whereis(@drone_bravo) -> "drone_bravo"
+          pid == GenServer.whereis(@controller_alpha) -> "controller_alpha"
+          pid == GenServer.whereis(@controller_bravo) -> "controller_bravo"
           true -> inspect(pid)
         end
       other -> inspect(other)
@@ -538,10 +541,10 @@ defmodule ElephantPatrol.Simulation do
     start_elephant()
     Process.sleep(500)
 
-    Node.spawn(@patrol1_node, __MODULE__, :start_patrol1, [[]])
+    Node.spawn(@alpha_node, __MODULE__, :start_alpha, [[]])
     Process.sleep(1000)
 
-    Node.spawn(@patrol2_node, __MODULE__, :start_patrol2, [[]])
+    Node.spawn(@bravo_node, __MODULE__, :start_bravo, [[]])
     Process.sleep(1000)
 
     :global.sync()

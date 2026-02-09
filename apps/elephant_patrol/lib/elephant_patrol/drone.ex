@@ -104,6 +104,7 @@ defmodule ElephantPatrol.Drone do
     end
   end
 
+  defp format_name({:global, {:drone, patrol}}) when is_atom(patrol), do: "Drone::#{patrol}"
   defp format_name(name) when is_atom(name), do: "Drone:#{name}"
   defp format_name(pid) when is_pid(pid), do: "Drone:#{inspect(pid)}"
   defp format_name({:via, _, name}), do: "Drone:#{inspect(name)}"

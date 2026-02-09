@@ -19,13 +19,13 @@ A distributed Elixir application for monitoring elephants with drones.
 │           │ scare                 │ observe       │ observe        │
 │           │                       │               │                │
 │  ┌────────┴────────┐     ┌───────┴───────┐  ┌───┴───────────┐     │
-│  │ patrol1@localhost│     │patrol2@localhost│                │     │
+│  │ alpha@localhost  │     │bravo@localhost  │                │     │
 │  │  ────────────────│     │ ────────────────│                │     │
 │  │                  │     │                  │                │     │
-│  │  🚁 Drone1 ──────┼─────┼──► 🎮 Controller2│                │     │
+│  │  🚁 DroneAlpha ───┼─────┼──► 🎮 ControllerBravo                │     │
 │  │       │          │     │        │         │                │     │
 │  │       ▼          │     │        ▼         │                │     │
-│  │  🎮 Controller1 ◄┼─────┼── 🚁 Drone2      │                │     │
+│  │  🎮 ControllerAlpha◄┼─────┼── 🚁 DroneBravo   │                │     │
 │  │                  │     │                  │                │     │
 │  └──────────────────┘     └──────────────────┘                │     │
 │                                                                     │
@@ -50,11 +50,11 @@ Start each node in a separate terminal:
 # Terminal 1 - Field node
 ./apps/elephant_patrol/scripts/start_field.sh
 
-# Terminal 2 - Patrol1 node
-./apps/elephant_patrol/scripts/start_patrol1.sh
+# Terminal 2 - Alpha patrol node
+./apps/elephant_patrol/scripts/start_patrol.sh alpha
 
-# Terminal 3 - Patrol2 node
-./apps/elephant_patrol/scripts/start_patrol2.sh
+# Terminal 3 - Bravo patrol node
+./apps/elephant_patrol/scripts/start_patrol.sh bravo
 ```
 
 Then run the following command in the `field` iex session:
@@ -74,12 +74,12 @@ When run with `monitored: true`, the system uses the `ddtrace` monitoring framew
 
 ## Message Flow
 
-When drone1 observes an elephant destroying crops:
+When drone_alpha observes an elephant destroying crops:
 
-1. `Drone1` checks `Elephant` state → destroying crops
-2. `Drone1` calls `Controller1.request_scare()`
-3. `Controller1` calls `Drone2.confirm_sighting()` (cross-node!)
-4. `Drone2` checks `Elephant` state → confirms destroying crops
-5. `Controller1` approves the scare request
-6. `Drone1` scares the `Elephant`
+1. `DroneAlpha` checks `Elephant` state → destroying crops
+2. `DroneAlpha` calls `ControllerAlpha.request_scare()`
+3. `ControllerAlpha` calls `DroneBravo.confirm_sighting()` (cross-node!)
+4. `DroneBravo` checks `Elephant` state → confirms destroying crops
+5. `ControllerAlpha` approves the scare request
+6. `DroneAlpha` scares the `Elephant`
 7. `Elephant` becomes calm

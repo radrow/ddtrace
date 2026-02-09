@@ -78,9 +78,11 @@ defmodule ElephantPatrol.Controller do
 
   # Private Functions
 
+  defp format_ref({:global, {:drone, patrol}}) when is_atom(patrol), do: "drone::#{patrol}"
   defp format_ref({:global, name}), do: Atom.to_string(name)
   defp format_ref(other), do: inspect(other)
 
+  defp format_name({:global, {:controller, patrol}}) when is_atom(patrol), do: "Controller::#{patrol}"
   defp format_name(name) when is_atom(name), do: "Controller:#{name}"
   defp format_name(pid) when is_pid(pid), do: "Controller:#{inspect(pid)}"
   defp format_name({:via, _, name}), do: "Controller:#{inspect(name)}"
