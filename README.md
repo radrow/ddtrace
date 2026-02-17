@@ -13,6 +13,7 @@ The three top-level applications are:
 - `apps/microchip_factory` – an example `gen_server`-based Elixir application
   which shows DDTrace in a slightly more realistic setup. Refer to its README
   for more details.
+- `elephant_patrol` — an example *distributed* `gen_server`-based Elixir app. 
 
 To build the tooling with the testing models run:
 
