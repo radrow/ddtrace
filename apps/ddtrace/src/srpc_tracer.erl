@@ -14,32 +14,32 @@
 -export([init/1, callback_mode/0]).
 -export([handle_event/4, terminate/3]).
 
-start_link(Worker, MonReg) ->
-    gen_statem:start_link(?MODULE, {Worker, MonReg}, []).
+start_link(Worker, WorkerPid) ->
+    gen_statem:start_link(?MODULE, {Worker, WorkerPid}, []).
 
 callback_mode() ->
     handle_event_function.
 
-init({Worker, MonReg}) ->
+init({Worker, WorkerPid}) ->
     process_flag(priority, low),
 
-    init_trace(Worker),
+    init_trace(WorkerPid),
     process_flag(trap_exit, true),
-    erlang:monitor(process, Worker),
+    erlang:monitor(process, WorkerPid),
 
-    Monitor = mon_reg:mon_of(MonReg, Worker),
+    Monitor = mon_reg:mon_of(Worker),
 
     Data = 
      #{worker => Worker,
+       worker_pid => WorkerPid,
        monitor => Monitor,
-       mon_reg => MonReg,
        requests => #{}
       },
     {ok, unlocked, Data}.
 
-init_trace(Worker) ->
+init_trace(WorkerPid) ->
     TraceOpts = ['send', 'receive', strict_monotonic_timestamp],
-    erlang:trace(Worker, true, TraceOpts),
+    erlang:trace(WorkerPid, true, TraceOpts),
     
     erlang:trace_pattern(
       'send',
@@ -89,37 +89,46 @@ handle_event(info,
 
 %% Send query
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
+             {trace_ts, _Worker, 'send', ?GS_CALL(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?QUERY_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Send response (alias-based)
+%% Send response (alias-based) - lookup the actual destination PID from requests map
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS_MSG(ReqId, Msg), To, _Ts},
-             State,
+             {trace_ts, _Worker, 'send', ?GS_RESP_ALIAS_MSG(ReqId, _Msg), _AliasRef, _Ts},
+             _State,
              Data) ->
-    handle_event(info,
-                 {trace_ts, _Worker, 'send', ?GS_RESP_MSG(ReqId, Msg), To, _Ts},
-                 State,
-                 Data);
+    #{requests := Requests} = Data,
+    case maps:get([alias|ReqId], Requests, undefined) of
+        undefined ->
+            keep_state_and_data;
+        ToPid ->
+            Event = {next_event, internal, ?SEND_INFO(ToPid, ?RESP_INFO([alias|ReqId]))},
+            {keep_state_and_data, [Event]}
+    end;
 
 %% Send response (plain ReqId)
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
+             {trace_ts, _Worker, 'send', ?GS_RESP(ReqId), To, _Ts},
              _State,
              _Data) ->
     Event = {next_event, internal, ?SEND_INFO(To, ?RESP_INFO(ReqId))},
     {keep_state_and_data, [Event]};
 
-%% Receive query
+%% Receive query (from trace) - store the sender for later reply lookup
 handle_event(info,
-             _Trace = {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
-             _State,
+             {trace_ts, _Worker, 'receive', ?GS_CALL_FROM(From, ReqId), _Ts},
+             State,
              Data) ->
     Event = {next_event, internal, ?RECV_INFO(?QUERY_INFO(ReqId))},
-    case mon_of(Data, From) of
+    
+    %% Store the sender's PID for later reply destination lookup
+    #{requests := Requests} = Data,
+    Data1 = Data#{requests => Requests#{ReqId => From}},
+    
+    case mon_reg:mon_of(From) of
         undefined ->
             %% If the sender is not being monitored, we fake monitor herald
             FakeNotif = ?HERALD(From, ?QUERY_INFO(ReqId)),
@@ -127,17 +136,18 @@ handle_event(info,
             gen_statem:cast(Monitor, FakeNotif);
         _Pid -> ok
     end,
-    {keep_state_and_data, [Event]};
+    
+    %% Trigger state refresh to retry postponed events
+    {next_state, state_change, Data1, [Event, {next_event, internal, {refresh_state, State}}]};
 
-%% Receive response (alias-based)
+%% Receive response (alias-based) - preserve the full [alias|ReqId] format
 handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS_MSG(ReqId, Msg), _Ts},
-             State,
-             Data) ->
-    handle_event(info,
-             {trace_ts, _Worker, 'receive', ?GS_RESP_MSG(ReqId, Msg), _Ts},
-             State,
-             Data);
+             {trace_ts, _Worker, 'receive', ?GS_RESP_ALIAS_MSG(ReqId, _Msg), _Ts},
+             _State,
+             _Data) ->
+    %% Keep the full [alias|ReqId] format for state matching
+    Event = {next_event, internal, ?RECV_INFO(?RESP_INFO([alias|ReqId]))},
+    {keep_state_and_data, [Event]};
 
 %% Receive response (plain ReqId)
 handle_event(info,
@@ -170,12 +180,15 @@ handle_event(internal, Ev = ?SEND_INFO(_To, ?QUERY_INFO(ReqId)), unlocked, Data)
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, {locked, ReqId}, Data};
 
+%% Send query when locked - postpone
+handle_event(internal, ?SEND_INFO(_To, ?QUERY_INFO(_ReqId)), {locked, _LockedReqId}, _Data) ->
+    {keep_state_and_data, postpone};
+
 %% Send response
 handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) ->
     #{requests := Requests} = Data,
     case maps:get(ReqId, Requests, undefined) of
         undefined -> 
-            %% No wait for this response
             {keep_state_and_data, postpone};
         _ ->
             gen_statem:cast(maps:get(monitor, Data), Ev),
@@ -184,15 +197,11 @@ handle_event(internal, Ev = ?SEND_INFO(_To, ?RESP_INFO(ReqId)), unlocked, Data) 
     end;
 
 %% Receive query
-handle_event(internal, Ev = ?RECV_INFO(?QUERY_INFO(ReqId)), State, Data) ->
+handle_event(internal, Ev = ?RECV_INFO(?QUERY_INFO(_ReqId)), _State, Data) ->
     gen_statem:cast(maps:get(monitor, Data), Ev),
-    #{requests := Requests} = Data,
-    Data1 = Data#{requests => Requests#{ReqId => {}}},
-    
-    %% Trigger state refresh to retry postponed events
-    {next_state, state_change, Data1, [{next_event, internal, {refresh_state, State}}]};
+    keep_state_and_data;
 
-%% Receive response
+%% Receive response (matching locked ReqId)
 handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data) ->
     gen_statem:cast(maps:get(monitor, Data), Ev),
     {next_state, unlocked, Data};
@@ -202,8 +211,8 @@ handle_event(internal, Ev = ?RECV_INFO(?RESP_INFO(ReqId)), {locked, ReqId}, Data
 %%%======================
 
 %% Forced state change to retry postponed events
-handle_event(internal, {refresh_state, NewState}, state_change, Data) ->
-    {next_state, NewState, Data};
+handle_event(internal, {refresh_state, NewState}, state_change, _Data) ->
+    {next_state, NewState, _Data};
 
 %% Stop tracer
 handle_event({call, From}, stop, _State, Data) ->
@@ -217,9 +226,6 @@ handle_event(_Kind, _Ev, _State, _Data) ->
 %%%======================
 %%% Internal functions
 %%%======================
-
-mon_of(#{mon_reg := MonReg}, To) ->
-    mon_reg:mon_of(MonReg, To).
 
 stop_tracing(Data) ->
     #{worker := Worker} = Data,

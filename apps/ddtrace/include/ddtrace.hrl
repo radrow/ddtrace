@@ -1,5 +1,30 @@
 -define(LOG_INDENT_SIZE, '$log_indent_size').
 
+%% Debug logging macro. Enable with -DDDT_DEBUG at compile time.
+%% Usage: ?DDT_DBG_PROBE("format string ~p", [Args]).
+
+-ifdef(DDT_DEBUG).
+-define(DDT_DBG(Type, Fmt, Args), 
+    logger:debug("[~p] " ++ Fmt, [Type | Args], #{module => ?MODULE, subsystem => ddtrace})).
+-define(DDT_DBG_PROBE(Fmt, Args),
+    logger:debug("🟣 " ++ Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-define(DDT_DBG_LOCK(Fmt, Args),
+    logger:debug("🟢 " ++ Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-define(DDT_DBG_DEADLOCK(Fmt, Args),
+    logger:debug("🔴 " ++ Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-define(DDT_DBG_HERALD(Fmt, Args),
+    logger:debug("🔵 " ++ Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-define(DDT_DBG_STATE(Fmt, Args),
+    logger:debug("🟡 " ++ Fmt, Args, #{module => ?MODULE, subsystem => ddtrace})).
+-else.
+-define(DDT_DBG(_Type, _Fmt, _Args), ok).
+-define(DDT_DBG_PROBE(_Fmt, _Args), ok).
+-define(DDT_DBG_LOCK(_Fmt, _Args), ok).
+-define(DDT_DBG_DEADLOCK(_Fmt, _Args), ok).
+-define(DDT_DBG_HERALD(_Fmt, _Args), ok).
+-define(DDT_DBG_STATE(_Fmt, _Args), ok).
+-endif.
+
 -define(RECV_INFO(MsgInfo), {'$ddt_recv', MsgInfo}).
 -define(SEND_INFO(To, MsgInfo), {'$ddt_send', To, MsgInfo}).
 -define(PROBE(Probe, Vis), {'$ddt_probe', Probe, Vis}).

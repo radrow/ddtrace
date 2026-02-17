@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -include("ddtrace.hrl").
--export([start_link/2, stop/1, init/1, handle_call/3, handle_cast/2]).
+-export([start_link/1, stop/1, init/1, handle_call/3, handle_cast/2]).
 
 -type process_name() ::
         pid()
@@ -12,7 +12,6 @@
 
 -record(state,
     { worker             :: process_name()
-    , mon_register       :: process_name()
     , probe              :: gen_server:request_id() | undefined
     , waitees            :: [process_name()] % callers waiting on us
     , reqid_map = #{}
@@ -25,8 +24,8 @@
 %% API
 %%%======================
 
-start_link(Worker, MonRegister) ->
-    gen_server:start_link(?MODULE, [Worker, MonRegister], []).
+start_link(Worker) ->
+    gen_server:start_link(?MODULE, [Worker], []).
 
 
 stop(Pid) ->
@@ -37,12 +36,11 @@ stop(Pid) ->
 %% gen_server callbacks
 %%%======================
 
-init([Worker, MonRegister]) ->
+init([Worker]) ->
     process_flag(priority, low),
 
     State = #state{
                worker = Worker,
-               mon_register = MonRegister,
                probe = undefined,
                waitees = []
               },
@@ -51,7 +49,7 @@ init([Worker, MonRegister]) ->
 %% Add waitee (deadlocked)
 handle_call({wait, Who, ReqId}, _From, State = #state{deadlocked = {true, DL}}) ->
     State1 = add_waitee(Who, ReqId, State),
-    Resp = case mon_reg:mon_of(State#state.mon_register, Who) of
+    Resp = case mon_reg:mon_of(Who) of
                undefined -> ok;
                MonPid when is_pid(MonPid) ->
                    {send, [{MonPid, ?DEADLOCK_PROP(DL)}]}
@@ -71,10 +69,11 @@ handle_call({wait, Who, ReqId}, _From, State = #state{probe = undefined}) ->
 %% Add waitee (locked)
 handle_call({wait, Who, ReqId}, _From, State = #state{probe = Probe}) ->
     State1 = add_waitee(Who, ReqId, State),
-    Resp = case mon_reg:mon_of(State#state.mon_register, Who) of
+    Resp = case mon_reg:mon_of(Who) of
                undefined -> ok;
                MonPid when is_pid(MonPid) ->
                    Worker = State#state.worker,
+                   ?DDT_DBG_PROBE("~p: Sending probe ~p to ~p with path [~p]", [Worker, Probe, MonPid, Worker]),
                    {send, [{MonPid, ?PROBE(Probe, [Worker])}]}
            end,
     {reply, Resp, State1};
@@ -117,6 +116,7 @@ handle_call(?PROBE(_Probe, _L), _From, State = #state{probe = undefined}) ->
 %% Own probe returned --- deadlock
 handle_call(?PROBE(Probe, DL), _From, State = #state{probe = Probe}) ->
     Worker = State#state.worker,
+    ?DDT_DBG_DEADLOCK("~p: Own probe ~p returned! Deadlock detected with path: ~p", [Worker, Probe, [Worker|DL]]),
     {DlProp, State1} = report_deadlock([Worker|DL], State),
     {reply, {send, DlProp}, State1};
 
@@ -124,8 +124,9 @@ handle_call(?PROBE(Probe, DL), _From, State = #state{probe = Probe}) ->
 handle_call(?PROBE(Probe, L), _From, State) ->
     Worker = State#state.worker,
     Waits = State#state.waitees,
-    Mons = [ mon_reg:mon_of(State#state.mon_register, Who) || Who <- Waits ],
+    Mons = [ mon_reg:mon_of(Who) || Who <- Waits ],
     Sends = [ {Mon, ?PROBE(Probe, [Worker|L])} || Mon <- Mons ],
+    ?DDT_DBG_PROBE("~p: Propagating foreign probe ~p (path: ~p) to ~p monitors", [Worker, Probe, [Worker|L], length(Sends)]),
     Resp = case Sends of [] -> ok; _ -> {send, Sends} end,
     {reply, Resp, State};
 
@@ -166,21 +167,21 @@ handle_cast(_Msg, State) ->
 
 get_waitee(Who, State = #state{reqid_map = WaitsRev}) when is_reference(Who) ->
     case maps:find(Who, WaitsRev) of
-        {ok, WhoPid} -> get_waitee(WhoPid, State);
+        {ok, WhoName} -> get_waitee(WhoName, State);
         _ -> undefined
     end;
-get_waitee(Who, #state{waitees = Waits}) when is_pid(Who) ->
+get_waitee(Who, #state{waitees = Waits}) ->
     case lists:member(Who, Waits) of
         true -> {ok, Who};
         _ -> undefined
     end.
 
 add_waitee(Who, ReqId, State) ->
-    case mon_reg:mon_of(State#state.mon_register, Who) of
+    case mon_reg:mon_of(Who) of
         undefined -> State;
         _ -> add_monitored_waitee(Who, ReqId, State)
     end.
-add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) when is_pid(Who) ->
+add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
     case get_waitee(Who, State) of
         {ok, _} -> error({already_waiting, Who});
         _ -> ok
@@ -191,16 +192,16 @@ add_monitored_waitee(Who, ReqId, State = #state{waitees = Waits, reqid_map = Req
      }.
 
 remove_waitee(Who, State) ->
-    case mon_reg:mon_of(State#state.mon_register, Who) of
+    case mon_reg:mon_of(Who) of
         undefined -> State;
         _ -> remove_monitored_waitee(Who, State)
     end.
 remove_monitored_waitee(Who, State = #state{waitees = Waits, reqid_map = ReqMap}) ->
     case get_waitee(Who, State) of
         undefined -> error({not_waiting, Who});
-        {ok, WhoPid} ->
-            NewWaits = lists:delete(WhoPid, Waits),
-            NewReqMap = maps:filter(fun(_K, V) -> V =/= WhoPid end, ReqMap),
+        {ok, WhoName} ->
+            NewWaits = lists:delete(WhoName, Waits),
+            NewReqMap = maps:filter(fun(_K, V) -> V =/= WhoName end, ReqMap),
             State#state{waitees = NewWaits, reqid_map = NewReqMap}
     end.
                                               
@@ -212,7 +213,7 @@ foreign_deadlock(DL) ->
 report_deadlock(DL, State) ->
     %% Notify waitees
     Sends = [ begin
-                  Mon = mon_reg:mon_of(State#state.mon_register, Pid),
+                  Mon = mon_reg:mon_of(Pid),
                   {Mon, ?DEADLOCK_PROP(foreign_deadlock(DL))}
               end
               || Pid <- State#state.waitees

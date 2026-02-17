@@ -146,7 +146,7 @@ run_scenario(Scenario, Opts) ->
     {module, _} = code:ensure_loaded(GsModule),
 
     {ok, Supervisor} = scenario_supervisor:start_link(),
-    {ok, MonReg} = mon_reg:start_link(),
+    mon_reg:ensure_started(),
 
     {LogKnown, LogFresh} = logging:mk_ets(),
     logging:conf(Opts),
@@ -167,7 +167,7 @@ run_scenario(Scenario, Opts) ->
                         shutdown => 5000,
                         type => worker},
                   {ok, P} = supervisor:start_child(Supervisor, ChildSpec),
-                  {ok, M} = ddtrace:start_link(P, MonReg, [{tracer_mod, TracerMod}]),
+                  {ok, M} = ddtrace:start_link(P, [{tracer_mod, TracerMod}]),
 
                   logging:remember(M, 'M', I),
                   logging:remember(P, 'P', I),
@@ -228,7 +228,7 @@ run_scenario(Scenario, Opts) ->
                                  timer:sleep(T),
                                  I
                          end,
-                     Mon = mon_reg:mon_of(MonReg, SessionInitProc),
+                     Mon = mon_reg:mon_of(SessionInitProc),
                      RD = ddtrace:subscribe_deadlocks(Mon),
                      
                      case OptDDMon of

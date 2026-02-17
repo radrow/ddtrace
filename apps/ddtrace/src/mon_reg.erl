@@ -1,85 +1,72 @@
 %%%-------------------------------------------------------------------
-%%% @doc Monitor registry
-%%%-------------------------------------------------------------------
+%%% @doc Monitor registry using pg process groups.
+%%%
+%%% Maps `gen_server` identities (PIDs or global names) to their monitor
+%%% processes. Uses a custom pg scope for distributed lookups.
+%%% -------------------------------------------------------------------
 -module(mon_reg).
--behaviour(gen_server).
 
-%% API
--export([start_link/0, mon_of/2, set_mon/3, unset_mon/2, send_mon/3, via/2]).
+-export([ensure_started/0, mon_of/1, set_mon/2, unset_mon/1]).
 
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
--define(SERVER, ?MODULE).
-
--record(state, {map = #{}}).
+-define(PG_SCOPE, mon_reg_scope).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
 
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
-
-mon_of(Reg, Pid) ->
-    gen_server:call(Reg, {whereis, Pid}).
-
-set_mon(Reg, Pid, Mon) ->
-    gen_server:call(Reg, {register, Pid, Mon}).
-
-unset_mon(Reg, Pid) ->
-    gen_server:call(Reg, {unregister, Pid}).
-
-send_mon(Reg, Pid, Msg) ->
-    case mon_of(Reg, Pid) of
-        undefined -> exit({badarg, {Pid, Msg}});
-        MonPid when is_pid(MonPid) -> MonPid ! Msg, MonPid
+%% @doc Ensure the pg scope is running. Idempotent — safe to call multiple times.
+-spec ensure_started() -> ok.
+ensure_started() ->
+    case pg:start(?PG_SCOPE) of
+        {ok, _} -> ok;
+        {error, {already_started, _}} -> ok
     end.
 
-via(Reg, Pid) ->
-    {via, Reg, Pid}.
+%% @doc Get monitor PID for a worker.
+-spec mon_of(term()) -> pid() | undefined.
+mon_of(Key) ->
+    case pg:get_members(?PG_SCOPE, Key) of
+        [MonPid | _] -> MonPid;
+        [] -> undefined
+    end.
+
+%% @doc Register a monitor for a worker key.
+-spec set_mon(term(), pid()) -> ok | {error, already_registered}.
+set_mon(Key, MonPid) ->
+    Callback =
+        fun() ->
+                case pg:get_members(?PG_SCOPE, Key) of
+                    [] ->
+                        pg:join(?PG_SCOPE, Key, MonPid),
+                        ok;
+                    [_ | _] ->
+                        {error, already_registered}
+                end
+        end,
+    %% It seems that pg reqiures this to be run on the same node as MonPid
+    exec_on_pid_node(MonPid, Callback).
+
+%% @doc Unregister a monitor for a worker key.
+-spec unset_mon(term()) -> ok.
+unset_mon(Key) ->
+    case pg:get_members(?PG_SCOPE, Key) of
+        [MonPid | _] -> pg:leave(?PG_SCOPE, Key, MonPid), ok;
+        [] -> ok
+    end.
+
 
 %%%===================================================================
-%%% gen_server callbacks
+%%% Helper functions
 %%%===================================================================
 
-init([]) ->
-    {ok, #state{}}.
-
-handle_call({whereis, Name}, _From, #state{map = Map} = S) ->
-    case maps:find(Name, Map) of
-        {ok, {M, _MonId}} -> {reply, M, S};
-        error -> {reply, undefined, S}
-    end;
-
-handle_call({register, Name, Pid}, _From, #state{map = M} = S) ->
-    case maps:is_key(Name, M) of
-        true ->
-            {reply, {error, already_registered}, S};
-        false ->
-            Ref = erlang:monitor(process, Pid),
-            {reply, ok, S#state{map = M#{Name => {Pid, Ref}}}}
-    end;
-
-handle_call({unregister, Name}, _From, #state{map = M} = S) ->
-    case maps:take(Name, M) of
-        error -> {reply, ok, S};
-        {{_Pid, Ref}, M2} ->
-            erlang:demonitor(Ref, [flush]),
-            {reply, ok, S#state{map = M2}}
-    end;
-
-handle_call(_, _, S) ->
-    {reply, {error, bad_call}, S}.
-
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state{map = M} = S) ->
-    %% Remove any entry whose monitor triggered
-    M2 = maps:filter(fun(_K, {__Pid, R}) -> R =/= Ref end, M),
-    {noreply, S#state{map = M2}};
-handle_info(_, S) ->
-    {noreply, S}.
-
-handle_cast(_, S) -> {noreply, S}.
-terminate(_, _) -> ok.
-code_change(_, S, _) -> {ok, S}.
-
+%% @doc Executes a function on the node of the specified PID (either locally or
+%% via RPC).
+-spec exec_on_pid_node(pid(), fun(() -> T)) -> T.
+exec_on_pid_node(Pid, Fun) when is_pid(Pid), is_function(Fun, 0) ->
+    Node = node(Pid),
+    case Node of
+        N when N =:= node() ->
+            Fun();
+        N ->
+            rpc:call(N, erlang, apply, [Fun, []])
+    end.
