@@ -81,6 +81,12 @@ defmodule ElephantPatrol.Controller do
     {:reply, result, state}
   end
 
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("#{@color}[#{state.name}] 🛑 Controller terminating: #{inspect(reason)}#{@reset}")
+    :ok
+  end
+
   # Private Functions
 
   defp format_ref({:global, {:drone, patrol}}) when is_atom(patrol), do: "Drone::#{patrol}"

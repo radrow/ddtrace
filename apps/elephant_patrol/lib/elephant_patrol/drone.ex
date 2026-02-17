@@ -83,6 +83,12 @@ defmodule ElephantPatrol.Drone do
     {:reply, is_destroying, state}
   end
 
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("#{@color}[#{state.name}] 🛑 Drone terminating: #{inspect(reason)}#{@reset}")
+    :ok
+  end
+
   # Private Functions
 
   defp do_observe(state) do

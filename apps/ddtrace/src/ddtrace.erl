@@ -316,10 +316,10 @@ unsubscribe_deadlocks(Mon) ->
 
 %% @doc Handle receive trace.
 handle_recv(From, ?QUERY_INFO([alias|ReqId]), Data) ->
-    NormalizedFrom = normalize_worker(From, Data),
+    NormalizedFrom = resolve_to_pid(From),
     state_wait(NormalizedFrom, ReqId, Data);
 handle_recv(From, ?QUERY_INFO(ReqId), Data) ->
-    NormalizedFrom = normalize_worker(From, Data),
+    NormalizedFrom = resolve_to_pid(From),
     state_wait(NormalizedFrom, ReqId, Data);
 handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
     state_unlock(Data).
@@ -328,7 +328,7 @@ handle_recv(_From, ?RESP_INFO(_ReqId), Data) ->
 handle_send(_To, ?QUERY_INFO(ReqId), Data) ->
     state_lock(ReqId, Data);
 handle_send(To, ?RESP_INFO(_ReqId), Data) ->
-    NormalizedTo = normalize_worker(To, Data),
+    NormalizedTo = resolve_to_pid(To),
     state_unwait(NormalizedTo, Data).
 
 %% @doc Register a client
@@ -356,7 +356,7 @@ state_deadlock(DL, Data) ->
 %% worker process, not the monitor directly. If [To] is not monitored, the
 %% function does nothing.
 send_herald(To, MsgInfo, Data) ->
-    NormalizedTo = normalize_worker(To, Data),
+    NormalizedTo = resolve_to_pid(To),
     Mon = mon_of(Data, NormalizedTo),
     case Mon of
         undefined -> ok;
@@ -430,29 +430,4 @@ resolve_to_pid(Name) when is_atom(Name) ->
     case whereis(Name) of
         undefined -> exit({noproc, Name});
         Pid -> Pid
-    end.
-
-
-%% @doc Normalize a worker identity - prefer global names over PIDs This is used
-%% to convert PIDs from trace events to their registered names
-normalize_worker(Worker, _Data) when is_pid(Worker) ->
-    %% Check if this PID has a corresponding global name in mon_reg
-    %% by looking through registered names
-    case find_registered_name(Worker) of
-        undefined -> Worker;  % No global name, use PID
-        Name -> Name          % Use global name
-    end;
-normalize_worker(Worker, _Data) ->
-    Worker.  % Already a name, keep it
-
-
-%% @doc Find a global name registered for a PID
-find_registered_name(Pid) ->
-    %% Scan global names to find one that resolves to this PID
-    Names = global:registered_names(),
-    case lists:filter(fun(Name) -> 
-        global:whereis_name(Name) =:= Pid 
-    end, Names) of
-        [Name | _] -> {global, Name};
-        [] -> undefined
     end.
