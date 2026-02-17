@@ -43,6 +43,7 @@ set_mon(Key, MonPid) ->
                         {error, already_registered}
                 end
         end,
+    %% It seems that pg reqiures this to be run on the same node as MonPid
     exec_on_pid_node(MonPid, Callback).
 
 %% @doc Unregister a monitor for a worker key.
@@ -58,6 +59,8 @@ unset_mon(Key) ->
 %%% Helper functions
 %%%===================================================================
 
+%% @doc Executes a function on the node of the specified PID (either locally or
+%% via RPC).
 -spec exec_on_pid_node(pid(), fun(() -> T)) -> T.
 exec_on_pid_node(Pid, Fun) when is_pid(Pid), is_function(Fun, 0) ->
     Node = node(Pid),

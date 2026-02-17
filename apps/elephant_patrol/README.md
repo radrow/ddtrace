@@ -1,5 +1,7 @@
 # Elephant Patrol
 
+**NOTE:** *This entire demo application has been written by an LLM.*
+
 A distributed Elixir application for monitoring elephants with drones.
 
 ## Architecture
