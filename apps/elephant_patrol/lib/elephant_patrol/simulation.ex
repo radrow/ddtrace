@@ -194,12 +194,13 @@ defmodule ElephantPatrol.Simulation do
   def trigger_elephant(opts \\ []) do
     monitored = Keyword.get(opts, :monitored, false)
     n_alarms = Keyword.get(opts, :alarms, 1)
+    timeout = Keyword.get(opts, :timeout, 20_000)
 
     # Start elephant if not running
     ensure_elephant_started()
 
     case wait_for_processes(5_000) do
-      :ok -> do_trigger_elephant(monitored, n_alarms)
+      :ok -> do_trigger_elephant(monitored, n_alarms, timeout)
       {:error, :timeout, missing} ->
         Logger.error("Cannot trigger elephant. Missing processes: #{inspect(missing)}")
         {:error, :missing_processes}
@@ -216,7 +217,7 @@ defmodule ElephantPatrol.Simulation do
     end
   end
 
-  defp do_trigger_elephant(monitored, n_alarms) do
+  defp do_trigger_elephant(monitored, n_alarms, timeout) do
     Process.sleep(500)
 
     ElephantPatrol.Elephant.destroy_crops(@elephant)
@@ -241,7 +242,7 @@ defmodule ElephantPatrol.Simulation do
             end
 
     # Execute the alarms
-    result = do_calls(alarms, timeout: 20_000, monitor_ctx: ctx)
+    result = do_calls(alarms, timeout: timeout, monitor_ctx: ctx)
 
     # Clean up monitors BEFORE restarting workers, so ddtrace doesn't
     # see DOWN messages from the workers being terminated.
